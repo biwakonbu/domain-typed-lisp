@@ -1,0 +1,19 @@
+(sort Subject)
+(sort Role)
+(sort Resource)
+(sort Action)
+
+(relation has-role (Subject Role))
+(relation resource-public (Resource))
+(relation can-access (Subject Resource Action))
+
+(fact has-role alice admin)
+(fact resource-public doc1)
+
+(rule (can-access ?u ?r read)
+      (and (has-role ?u admin)
+           (resource-public ?r)))
+
+(defn can-read ((u Subject) (r Resource))
+  (Refine b Bool (can-access u r read))
+  (can-access u r read))
