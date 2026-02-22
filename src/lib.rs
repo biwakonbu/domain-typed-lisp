@@ -13,6 +13,7 @@ pub use diagnostics::{Diagnostic, Span};
 pub use logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, solve_facts};
 pub use parser::parse_program;
 pub use prover::{
-    ProofTrace, generate_doc_bundle, has_failed_obligation, prove_program, write_proof_trace,
+    DOC_SPEC_SCHEMA_VERSION, DocBundleFormat, PROOF_TRACE_SCHEMA_VERSION, ProofTrace,
+    generate_doc_bundle, has_failed_obligation, prove_program, write_proof_trace,
 };
 pub use typecheck::{TypeReport, check_program};

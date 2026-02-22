@@ -132,7 +132,10 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 `assert` と `Refine` 契約を有限モデルで評価します。`universe` 不足や反例で失敗します。
 
 ### 7.3 `doc`
-未証明義務が 1 つでもあれば失敗します。`spec.md` などの成果物は「証明成功時のみ」生成されます。
+未証明義務が 1 つでもあれば失敗します。成果物は「証明成功時のみ」生成されます。
+
+- `--format markdown`（既定）: `spec.md` / `proof-trace.json` / `doc-index.json`
+- `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
 
 ## 8. 顧客・契約管理の最小実例
 
@@ -144,6 +147,8 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 ```bash
 cargo run -- check examples/customer_contract_ja.dtl
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
+cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown
+cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format json
 ```
 
 ## 9. 失敗時のデバッグ手順（推奨）

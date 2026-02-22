@@ -12,6 +12,15 @@ use crate::stratify::compute_strata;
 use crate::typecheck::check_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
+pub const PROOF_TRACE_SCHEMA_VERSION: &str = "1.0.0";
+pub const DOC_SPEC_SCHEMA_VERSION: &str = "1.0.0";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocBundleFormat {
+    Markdown,
+    Json,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProofTrace {
     pub schema_version: String,
@@ -50,6 +59,51 @@ struct ObligationSpec {
     lhs: Formula,
     rhs: Formula,
     vars: Vec<(String, Type)>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpec {
+    schema_version: String,
+    sorts: Vec<JsonSpecSort>,
+    data_declarations: Vec<JsonSpecDataDecl>,
+    relations: Vec<JsonSpecRelation>,
+    assertions: Vec<JsonSpecAssertion>,
+    proof_status: Vec<JsonSpecProofStatus>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecSort {
+    name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecDataDecl {
+    name: String,
+    constructors: Vec<JsonSpecConstructor>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecConstructor {
+    name: String,
+    fields: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecRelation {
+    name: String,
+    arg_sorts: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecAssertion {
+    name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonSpecProofStatus {
+    id: String,
+    kind: String,
+    result: String,
 }
 
 pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
@@ -123,7 +177,7 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
     }
 
     Ok(ProofTrace {
-        schema_version: "1.0.0".to_string(),
+        schema_version: PROOF_TRACE_SCHEMA_VERSION.to_string(),
         obligations: traces,
     })
 }
@@ -153,6 +207,7 @@ pub fn generate_doc_bundle(
     program: &Program,
     trace: &ProofTrace,
     out_dir: &Path,
+    format: DocBundleFormat,
 ) -> Result<(), Vec<Diagnostic>> {
     if has_failed_obligation(trace) {
         return Err(vec![Diagnostic::new(
@@ -176,9 +231,9 @@ pub fn generate_doc_bundle(
     let proof_path = out_dir.join("proof-trace.json");
     write_proof_trace(&proof_path, trace).map_err(|d| vec![d])?;
 
-    let spec_path = out_dir.join("spec.md");
-    let spec = render_spec_markdown(program, trace);
-    fs::write(&spec_path, spec).map_err(|e| {
+    let (spec_filename, spec_content) = render_spec_content(program, trace, format)?;
+    let spec_path = out_dir.join(spec_filename);
+    fs::write(&spec_path, spec_content).map_err(|e| {
         vec![Diagnostic::new(
             "E-IO",
             format!("failed to write {}: {e}", spec_path.display()),
@@ -187,8 +242,8 @@ pub fn generate_doc_bundle(
     })?;
 
     let index = serde_json::json!({
-        "schema_version": "1.0.0",
-        "files": ["spec.md", "proof-trace.json"],
+        "schema_version": DOC_SPEC_SCHEMA_VERSION,
+        "files": [spec_filename, "proof-trace.json"],
         "status": "ok"
     });
     let index_path = out_dir.join("doc-index.json");
@@ -205,6 +260,27 @@ pub fn generate_doc_bundle(
     })?;
 
     Ok(())
+}
+
+fn render_spec_content(
+    program: &Program,
+    trace: &ProofTrace,
+    format: DocBundleFormat,
+) -> Result<(&'static str, String), Vec<Diagnostic>> {
+    match format {
+        DocBundleFormat::Markdown => Ok(("spec.md", render_spec_markdown(program, trace))),
+        DocBundleFormat::Json => {
+            let spec = render_spec_json(program, trace);
+            let rendered = serde_json::to_string_pretty(&spec).map_err(|e| {
+                vec![Diagnostic::new(
+                    "E-IO",
+                    format!("failed to serialize spec.json: {e}"),
+                    None,
+                )]
+            })?;
+            Ok(("spec.json", rendered))
+        }
+    }
 }
 
 fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
@@ -251,6 +327,58 @@ fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
     }
 
     out
+}
+
+fn render_spec_json(program: &Program, trace: &ProofTrace) -> JsonSpec {
+    JsonSpec {
+        schema_version: DOC_SPEC_SCHEMA_VERSION.to_string(),
+        sorts: program
+            .sorts
+            .iter()
+            .map(|sort| JsonSpecSort {
+                name: sort.name.clone(),
+            })
+            .collect(),
+        data_declarations: program
+            .data_decls
+            .iter()
+            .map(|decl| JsonSpecDataDecl {
+                name: decl.name.clone(),
+                constructors: decl
+                    .constructors
+                    .iter()
+                    .map(|ctor| JsonSpecConstructor {
+                        name: ctor.name.clone(),
+                        fields: ctor.fields.iter().map(type_to_string).collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        relations: program
+            .relations
+            .iter()
+            .map(|rel| JsonSpecRelation {
+                name: rel.name.clone(),
+                arg_sorts: rel.arg_sorts.clone(),
+            })
+            .collect(),
+        assertions: program
+            .asserts
+            .iter()
+            .map(|assertion| JsonSpecAssertion {
+                name: assertion.name.clone(),
+            })
+            .collect(),
+        proof_status: trace
+            .obligations
+            .iter()
+            .map(|obligation| JsonSpecProofStatus {
+                id: obligation.id.clone(),
+                kind: obligation.kind.clone(),
+                result: obligation.result.clone(),
+            })
+            .collect(),
+    }
 }
 
 fn type_to_string(ty: &Type) -> String {

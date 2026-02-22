@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  check:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +17,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --workspace --lib --bins --tests
-      - name: integration
-        run: cargo test --test integration_cli
-      - name: property
+      - name: property test
         run: cargo test --test property_logic
       - name: coverage gate
         run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 80
@@ -30,3 +28,31 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+
+  cli-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: integration check cli
+        run: cargo test --test integration_cli
+      - name: e2e check json contract
+        run: cargo test --test e2e_examples
+
+  cli-prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: integration prove cli
+        run: cargo test --test integration_prove_doc_cli cli_prove
+      - name: prove json contract
+        run: cargo test --test integration_prove_json_contract
+
+  cli-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: integration doc cli
+        run: cargo test --test integration_prove_doc_cli cli_doc

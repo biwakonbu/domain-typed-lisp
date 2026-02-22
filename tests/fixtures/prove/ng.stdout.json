@@ -1,0 +1,35 @@
+{
+  "status": "error",
+  "proof": {
+    "schema_version": "1.0.0",
+    "obligations": [
+      {
+        "id": "assert::everyone-allowed",
+        "kind": "assert",
+        "result": "failed",
+        "valuation": [
+          {
+            "name": "u",
+            "value": "(bob)"
+          }
+        ],
+        "premises": [],
+        "derived": [
+          "allowed((alice))"
+        ],
+        "counterexample": {
+          "valuation": [
+            {
+              "name": "u",
+              "value": "(bob)"
+            }
+          ],
+          "premises": [],
+          "missing_goals": [
+            "allowed((bob))"
+          ]
+        }
+      }
+    ]
+  }
+}

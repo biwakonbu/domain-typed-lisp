@@ -4,7 +4,7 @@ use std::{collections::HashSet, fmt::Write};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use dtl::{
-    Diagnostic, Program, ProofTrace, Span, check_program, generate_doc_bundle,
+    Diagnostic, DocBundleFormat, Program, ProofTrace, Span, check_program, generate_doc_bundle,
     has_failed_obligation, parse_program, prove_program, write_proof_trace,
 };
 use serde::Serialize;
@@ -202,7 +202,7 @@ fn run_prove(files: &[PathBuf], format: OutputFormat, out: Option<&Path>) -> i32
     if failed { 1 } else { 0 }
 }
 
-fn run_doc(files: &[PathBuf], out: &Path, _format: DocFormat) -> i32 {
+fn run_doc(files: &[PathBuf], out: &Path, format: DocFormat) -> i32 {
     let program = match load_program(files) {
         Ok(program) => program,
         Err(diags) => {
@@ -223,7 +223,7 @@ fn run_doc(files: &[PathBuf], out: &Path, _format: DocFormat) -> i32 {
         }
     };
 
-    if let Err(diags) = generate_doc_bundle(&program, &trace, out) {
+    if let Err(diags) = generate_doc_bundle(&program, &trace, out, as_doc_bundle_format(format)) {
         for d in diags {
             eprintln!("{d}");
         }
@@ -232,6 +232,13 @@ fn run_doc(files: &[PathBuf], out: &Path, _format: DocFormat) -> i32 {
 
     println!("ok");
     0
+}
+
+fn as_doc_bundle_format(format: DocFormat) -> DocBundleFormat {
+    match format {
+        DocFormat::Markdown => DocBundleFormat::Markdown,
+        DocFormat::Json => DocBundleFormat::Json,
+    }
 }
 
 fn load_program(files: &[PathBuf]) -> Result<Program, Vec<Diagnostic>> {

@@ -1,6 +1,6 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use tempfile::tempdir;
 
@@ -109,6 +109,12 @@ fn cli_doc_generates_bundle_only_when_proved() {
     assert!(ok_out.join("spec.md").exists());
     assert!(ok_out.join("proof-trace.json").exists());
     assert!(ok_out.join("doc-index.json").exists());
+    let index: Value = serde_json::from_slice(
+        &fs::read(ok_out.join("doc-index.json")).expect("read markdown doc index"),
+    )
+    .expect("valid markdown doc index");
+    assert_eq!(index["files"], json!(["spec.md", "proof-trace.json"]));
+    assert_eq!(index["status"], "ok");
 
     let ng_src = dir.path().join("doc_ng.dtl");
     let ng_out = dir.path().join("doc_out_ng");
@@ -134,4 +140,77 @@ fn cli_doc_generates_bundle_only_when_proved() {
         .failure();
 
     assert!(!ng_out.join("spec.md").exists());
+    assert!(!ng_out.join("spec.json").exists());
+}
+
+#[test]
+fn cli_doc_json_generates_json_bundle() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("doc_json_ok.dtl");
+    let out = dir.path().join("doc_json_out");
+    fs::write(
+        &src,
+        r#"
+        (data Subject (alice) (bob))
+        (data Action (read))
+        (sort Resource)
+        (relation can-access (Subject Resource Action))
+        (fact can-access (alice) doc-1 (read))
+        (universe Subject ((alice) (bob)))
+        (universe Resource (doc-1))
+        (universe Action ((read)))
+        (assert consistency ((u Subject)) (not (and (can-access u doc-1 (read)) (not (can-access u doc-1 (read))))))
+        "#,
+    )
+    .expect("write json case");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("doc")
+        .arg(&src)
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success();
+
+    assert!(out.join("spec.json").exists());
+    assert!(!out.join("spec.md").exists());
+    assert!(out.join("proof-trace.json").exists());
+    assert!(out.join("doc-index.json").exists());
+
+    let spec: Value =
+        serde_json::from_slice(&fs::read(out.join("spec.json")).expect("read json spec"))
+            .expect("valid spec json");
+    let expected_spec = json!({
+        "schema_version": "1.0.0",
+        "sorts": [
+            {"name": "Resource"}
+        ],
+        "data_declarations": [
+            {"name": "Subject", "constructors": [
+                {"name": "alice", "fields": []},
+                {"name": "bob", "fields": []}
+            ]},
+            {"name": "Action", "constructors": [
+                {"name": "read", "fields": []}
+            ]}
+        ],
+        "relations": [
+            {"name": "can-access", "arg_sorts": ["Subject", "Resource", "Action"]}
+        ],
+        "assertions": [
+            {"name": "consistency"}
+        ],
+        "proof_status": [
+            {"id": "assert::consistency", "kind": "assert", "result": "proved"}
+        ]
+    });
+    assert_eq!(spec, expected_spec);
+
+    let index: Value =
+        serde_json::from_slice(&fs::read(out.join("doc-index.json")).expect("read json index"))
+            .expect("valid doc index json");
+    assert_eq!(index["files"], json!(["spec.json", "proof-trace.json"]));
+    assert_eq!(index["status"], "ok");
 }

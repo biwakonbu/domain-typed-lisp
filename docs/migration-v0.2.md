@@ -22,8 +22,16 @@ dtl prove path/to/file.dtl --format json --out out
 ```
 
 ### 2.3 ドキュメントを生成したい場合
+`doc` の既定フォーマットは `markdown` です。
+
 ```bash
-dtl doc path/to/file.dtl --out out
+dtl doc path/to/file.dtl --out out --format markdown
+```
+
+JSON 仕様成果物が必要な場合:
+
+```bash
+dtl doc path/to/file.dtl --out out_json --format json
 ```
 
 ## 3. DSL 修正パターン
@@ -65,4 +73,5 @@ dtl doc path/to/file.dtl --out out
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo test --workspace --lib --bins --tests`
 - `dtl prove <FILE> --format json --out out`
-- `dtl doc <FILE> --out out`
+- `dtl doc <FILE> --out out --format markdown`
+- `dtl doc <FILE> --out out_json --format json`

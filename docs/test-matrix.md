@@ -21,5 +21,6 @@
 | C-01 | CLI 正常 | `check` | exit 0 | language-spec §2 |
 | C-02 | CLI 正常 | `prove --format json --out` | exit 0 + `proof-trace.json` | language-spec §2/§8 |
 | C-03 | CLI 異常 | `prove` 失敗義務 | exit 1 + failed obligation | language-spec §2/§7 |
-| C-04 | CLI 正常 | `doc` 証明成功ケース | `spec.md` / `proof-trace.json` / `doc-index.json` | language-spec §8 |
+| C-04 | CLI 正常 | `doc --format markdown` 証明成功ケース | `spec.md` / `proof-trace.json` / `doc-index.json` | language-spec §8 |
 | C-05 | CLI 異常 | `doc` 未証明ケース | exit 1 + 生成抑止 | language-spec §8 |
+| C-06 | CLI 正常 | `doc --format json` 証明成功ケース | `spec.json` / `proof-trace.json` / `doc-index.json` | language-spec §8 |

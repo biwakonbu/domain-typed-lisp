@@ -1,9 +1,9 @@
 # TODO (v0.2)
 
 ## P0
-- [ ] `check/prove/doc` を CI 必須ジョブに反映する。
-- [ ] `prove` の JSON 契約をバージョン付きで固定し、互換テストを追加する。
-- [ ] `doc --format json` の成果物仕様を実装する（現状は `spec.md` 固定）。
+- [x] `check/prove/doc` を CI 必須ジョブに反映する。
+- [x] `prove` の JSON 契約をバージョン付きで固定し、互換テストを追加する。
+- [x] `doc --format json` の成果物仕様を実装する（現状は `spec.md` 固定）。
 
 ## P1
 - [ ] `prove` の義務抽出を強化する（`if` / `match` を含む `defn` 本体の論理化）。

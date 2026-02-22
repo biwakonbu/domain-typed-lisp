@@ -7,7 +7,7 @@
 
 - 静的検査: 型整合・層化否定・`match` 網羅性・全域性（再帰禁止）
 - 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
-- ドキュメント生成: 証明成功時のみ `spec.md` と `proof-trace.json` を出力
+- ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力
 - 識別子は Unicode 対応（内部では NFC 正規化、`import` パス文字列は除外）
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
 
@@ -15,8 +15,9 @@
 ```bash
 cargo build
 cargo run -- check examples/access_control_ok.dtl
-cargo run -- prove examples/access_control_ok.dtl --format json --out out
-cargo run -- doc examples/access_control_ok.dtl --out out
+cargo run -- prove examples/customer_contract_ja.dtl --format json --out out
+cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown
+cargo run -- doc examples/customer_contract_ja.dtl --out out_json --format json
 
 # 日本語ドメイン型サンプル
 cargo run -- check examples/customer_contract_ja.dtl
@@ -41,7 +42,9 @@ dtl prove <FILE>... [--format text|json] [--out DIR]
 ```bash
 dtl doc <FILE>... --out DIR [--format markdown|json]
 ```
-- すべての義務が証明された場合のみ `spec.md` / `proof-trace.json` / `doc-index.json` を出力する。
+- すべての義務が証明された場合のみ成果物を出力する。
+  - `--format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
+  - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
 
 ## 検証コマンド
 ```bash

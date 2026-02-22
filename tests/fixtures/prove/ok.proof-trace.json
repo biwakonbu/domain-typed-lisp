@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "obligations": [
+    {
+      "id": "assert::consistency",
+      "kind": "assert",
+      "result": "proved",
+      "valuation": [],
+      "premises": [],
+      "derived": []
+    }
+  ]
+}

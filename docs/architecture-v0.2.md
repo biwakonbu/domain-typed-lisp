@@ -21,5 +21,6 @@
 
 ## 出力契約
 - `prove --out DIR`: `proof-trace.json`（`schema_version = 1.0.0`）
-- `doc --out DIR`: `spec.md` / `proof-trace.json` / `doc-index.json`
+- `doc --out DIR --format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
+- `doc --out DIR --format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
 - 未証明義務がある場合 `doc` は失敗する。
