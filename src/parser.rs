@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::ast::{Defn, Expr, Fact, ImportDecl, Param, Program, RelationDecl, Rule, SortDecl};
+use crate::ast::{
+    AssertDecl, ConstructorDecl, DataDecl, Defn, Expr, Fact, ImportDecl, MatchArm, Param, Pattern,
+    Program, RelationDecl, Rule, SortDecl, UniverseDecl,
+};
 use crate::diagnostics::{Diagnostic, make_span};
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
@@ -49,9 +52,12 @@ pub fn parse_program(src: &str) -> Result<Program, Vec<Diagnostic>> {
         match parse_toplevel(src, form) {
             Ok(TopLevel::Import(i)) => program.imports.push(i),
             Ok(TopLevel::Sort(s)) => program.sorts.push(s),
+            Ok(TopLevel::Data(d)) => program.data_decls.push(d),
             Ok(TopLevel::Relation(r)) => program.relations.push(r),
             Ok(TopLevel::Fact(f)) => program.facts.push(f),
             Ok(TopLevel::Rule(r)) => program.rules.push(r),
+            Ok(TopLevel::Assert(a)) => program.asserts.push(a),
+            Ok(TopLevel::Universe(u)) => program.universes.push(u),
             Ok(TopLevel::Defn(d)) => program.defns.push(d),
             Err(e) => errors.push(e),
         }
@@ -189,9 +195,12 @@ fn parse_one(src: &str, tokens: &[Token], idx: &mut usize) -> Result<SExpr, Diag
 enum TopLevel {
     Import(ImportDecl),
     Sort(SortDecl),
+    Data(DataDecl),
     Relation(RelationDecl),
     Fact(Fact),
     Rule(Rule),
+    Assert(AssertDecl),
+    Universe(UniverseDecl),
     Defn(Defn),
 }
 
@@ -218,7 +227,7 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
     let head = list[0].as_atom().ok_or_else(|| {
         Diagnostic::new(
             "E-PARSE",
-            "top-level head must be an atom",
+            "top-level head must be symbol",
             Some(make_span(src, start, end)),
         )
     })?;
@@ -226,9 +235,12 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
     match head {
         "import" => parse_import(src, list),
         "sort" => parse_sort(src, list),
+        "data" => parse_data(src, list),
         "relation" => parse_relation(src, list),
         "fact" => parse_fact(src, list),
         "rule" => parse_rule(src, list),
+        "assert" => parse_assert(src, list),
+        "universe" => parse_universe(src, list),
         "defn" => parse_defn(src, list),
         _ => Err(Diagnostic::new(
             "E-PARSE",
@@ -247,12 +259,9 @@ fn parse_import(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
             Some(make_span(src, s, e)),
         ));
     }
-    let path_atom = atom_required(src, &list[1], "import path")?;
-    let path = if path_atom.starts_with('"') && path_atom.ends_with('"') && path_atom.len() >= 2 {
-        path_atom[1..path_atom.len() - 1].to_string()
-    } else {
-        path_atom
-    };
+
+    let path = atom_required(src, &list[1], "import path")?;
+    let path = path.trim_matches('"').to_string();
     let (s, e) = list[0].span_bounds();
     Ok(TopLevel::Import(ImportDecl {
         path,
@@ -273,6 +282,59 @@ fn parse_sort(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
     let (s, e) = list[0].span_bounds();
     Ok(TopLevel::Sort(SortDecl {
         name,
+        span: make_span(src, s, e),
+    }))
+}
+
+fn parse_data(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
+    if list.len() < 3 {
+        let (s, e) = list[0].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "data expects type name and at least one constructor",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    let name = atom_required(src, &list[1], "data name")?;
+
+    let mut ctors = Vec::new();
+    for node in list.iter().skip(2) {
+        let ctor_list = match node {
+            SExpr::List(items, _, _) => items,
+            _ => {
+                let (s, e) = node.span_bounds();
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "constructor must be list: (Ctor fields...)",
+                    Some(make_span(src, s, e)),
+                ));
+            }
+        };
+        if ctor_list.is_empty() {
+            let (s, e) = node.span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "constructor cannot be empty",
+                Some(make_span(src, s, e)),
+            ));
+        }
+        let ctor_name = atom_required(src, &ctor_list[0], "constructor name")?;
+        let mut fields = Vec::new();
+        for field in ctor_list.iter().skip(1) {
+            fields.push(parse_type(src, field, &HashSet::new())?);
+        }
+        let (s, e) = node.span_bounds();
+        ctors.push(ConstructorDecl {
+            name: ctor_name,
+            fields,
+            span: make_span(src, s, e),
+        });
+    }
+
+    let (s, e) = list[0].span_bounds();
+    Ok(TopLevel::Data(DataDecl {
+        name,
+        constructors: ctors,
         span: make_span(src, s, e),
     }))
 }
@@ -315,22 +377,14 @@ fn parse_fact(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
         let (s, e) = list[0].span_bounds();
         return Err(Diagnostic::new(
             "E-PARSE",
-            "fact expects relation and terms",
+            "fact expects predicate and terms",
             Some(make_span(src, s, e)),
         ));
     }
-    let name = atom_required(src, &list[1], "fact relation")?;
+    let name = atom_required(src, &list[1], "fact predicate")?;
     let mut terms = Vec::new();
     for item in list.iter().skip(2) {
-        let term = parse_rule_term(src, item)?;
-        if matches!(term, LogicTerm::Var(_)) {
-            let (s, e) = item.span_bounds();
-            return Err(Diagnostic::new(
-                "E-PARSE",
-                "fact cannot contain variables",
-                Some(make_span(src, s, e)),
-            ));
-        }
+        let term = parse_const_term(src, item)?;
         terms.push(term);
     }
     let (s, e) = list[0].span_bounds();
@@ -356,6 +410,106 @@ fn parse_rule(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
     Ok(TopLevel::Rule(Rule {
         head,
         body,
+        span: make_span(src, s, e),
+    }))
+}
+
+fn parse_assert(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
+    if list.len() != 4 {
+        let (s, e) = list[0].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "assert expects name, params and formula",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    let name = atom_required(src, &list[1], "assert name")?;
+    let params_list = match &list[2] {
+        SExpr::List(items, _, _) => items,
+        node => {
+            let (s, e) = node.span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "assert params must be a list",
+                Some(make_span(src, s, e)),
+            ));
+        }
+    };
+
+    let mut params = Vec::new();
+    let mut scope = HashSet::new();
+    for p in params_list {
+        let item = match p {
+            SExpr::List(items, _, _) => items,
+            node => {
+                let (s, e) = node.span_bounds();
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "assert parameter must be (name type)",
+                    Some(make_span(src, s, e)),
+                ));
+            }
+        };
+        if item.len() != 2 {
+            let (s, e) = p.span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "assert parameter must contain exactly name and type",
+                Some(make_span(src, s, e)),
+            ));
+        }
+        let pname = atom_required(src, &item[0], "assert parameter name")?;
+        let ty = parse_type(src, &item[1], &HashSet::new())?;
+        let (s, e) = p.span_bounds();
+        params.push(Param {
+            name: pname.clone(),
+            ty,
+            span: make_span(src, s, e),
+        });
+        scope.insert(pname);
+    }
+
+    let formula = parse_refine_formula(src, &list[3], &scope)?;
+    let (s, e) = list[0].span_bounds();
+    Ok(TopLevel::Assert(AssertDecl {
+        name,
+        params,
+        formula,
+        span: make_span(src, s, e),
+    }))
+}
+
+fn parse_universe(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
+    if list.len() != 3 {
+        let (s, e) = list[0].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "universe expects type name and value list",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    let ty_name = atom_required(src, &list[1], "universe type")?;
+    let values_node = match &list[2] {
+        SExpr::List(items, _, _) => items,
+        node => {
+            let (s, e) = node.span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "universe values must be a list",
+                Some(make_span(src, s, e)),
+            ));
+        }
+    };
+
+    let mut values = Vec::new();
+    for node in values_node {
+        values.push(parse_const_term(src, node)?);
+    }
+
+    let (s, e) = list[0].span_bounds();
+    Ok(TopLevel::Universe(UniverseDecl {
+        ty_name,
+        values,
         span: make_span(src, s, e),
     }))
 }
@@ -500,6 +654,18 @@ fn parse_type(src: &str, node: &SExpr, scope: &HashSet<String>) -> Result<Type, 
             }
             let ret = parse_type(src, &list[2], scope)?;
             Ok(Type::Fun(parsed_args, Box::new(ret)))
+        }
+        "Adt" => {
+            if list.len() != 2 {
+                let (s, e) = node.span_bounds();
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "Adt expects exactly one type name",
+                    Some(make_span(src, s, e)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "ADT name")?;
+            Ok(Type::Adt(name))
         }
         _ => {
             let (s, e) = node.span_bounds();
@@ -787,6 +953,7 @@ fn parse_expr(src: &str, node: &SExpr, scope: &HashSet<String>) -> Result<Expr, 
                 span: make_span(src, s, e),
             })
         }
+        "match" => parse_match_expr(src, node, list, scope),
         _ => {
             let mut args = Vec::new();
             for a in list.iter().skip(1) {
@@ -801,8 +968,149 @@ fn parse_expr(src: &str, node: &SExpr, scope: &HashSet<String>) -> Result<Expr, 
     }
 }
 
+fn parse_match_expr(
+    src: &str,
+    node: &SExpr,
+    list: &[SExpr],
+    scope: &HashSet<String>,
+) -> Result<Expr, Diagnostic> {
+    let (s, e) = node.span_bounds();
+    if list.len() < 3 {
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "match expects scrutinee and at least one arm",
+            Some(make_span(src, s, e)),
+        ));
+    }
+
+    let scrutinee = parse_expr(src, &list[1], scope)?;
+    let mut arms = Vec::new();
+
+    for arm_node in list.iter().skip(2) {
+        let arm_items = match arm_node {
+            SExpr::List(items, _, _) => items,
+            _ => {
+                let (as_, ae) = arm_node.span_bounds();
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "match arm must be (pattern expr)",
+                    Some(make_span(src, as_, ae)),
+                ));
+            }
+        };
+        if arm_items.len() != 2 {
+            let (as_, ae) = arm_node.span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "match arm must contain exactly pattern and expression",
+                Some(make_span(src, as_, ae)),
+            ));
+        }
+
+        let mut pattern_bindings = HashSet::new();
+        let pattern = parse_pattern(src, &arm_items[0], &mut pattern_bindings)?;
+        let mut local_scope = scope.clone();
+        local_scope.extend(pattern_bindings);
+        let body = parse_expr(src, &arm_items[1], &local_scope)?;
+        let (as_, ae) = arm_node.span_bounds();
+        arms.push(MatchArm {
+            pattern,
+            body,
+            span: make_span(src, as_, ae),
+        });
+    }
+
+    Ok(Expr::Match {
+        scrutinee: Box::new(scrutinee),
+        arms,
+        span: make_span(src, s, e),
+    })
+}
+
+fn parse_pattern(
+    src: &str,
+    node: &SExpr,
+    bindings: &mut HashSet<String>,
+) -> Result<Pattern, Diagnostic> {
+    if let Some(atom) = node.as_atom() {
+        let (s, e) = node.span_bounds();
+        if atom == "_" {
+            return Ok(Pattern::Wildcard {
+                span: make_span(src, s, e),
+            });
+        }
+        if atom == "true" || atom == "false" {
+            return Ok(Pattern::Bool {
+                value: atom == "true",
+                span: make_span(src, s, e),
+            });
+        }
+        if let Ok(i) = atom.parse::<i64>() {
+            return Ok(Pattern::Int {
+                value: i,
+                span: make_span(src, s, e),
+            });
+        }
+        bindings.insert(atom.to_string());
+        return Ok(Pattern::Var {
+            name: atom.to_string(),
+            span: make_span(src, s, e),
+        });
+    }
+
+    let list = match node {
+        SExpr::List(items, _, _) => items,
+        SExpr::Atom(_, _, _) => unreachable!(),
+    };
+    if list.is_empty() {
+        let (s, e) = node.span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "pattern list cannot be empty",
+            Some(make_span(src, s, e)),
+        ));
+    }
+
+    let ctor = atom_required(src, &list[0], "pattern constructor")?;
+    let mut args = Vec::new();
+    for child in list.iter().skip(1) {
+        args.push(parse_pattern(src, child, bindings)?);
+    }
+    let (s, e) = node.span_bounds();
+    Ok(Pattern::Ctor {
+        name: ctor,
+        args,
+        span: make_span(src, s, e),
+    })
+}
+
 fn parse_rule_term(src: &str, node: &SExpr) -> Result<LogicTerm, Diagnostic> {
-    let atom = atom_required(src, node, "term")?;
+    match node {
+        SExpr::Atom(atom, s, e) => parse_rule_atom_term(src, atom, *s, *e),
+        SExpr::List(items, s, e) => {
+            if items.is_empty() {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "constructor term cannot be empty",
+                    Some(make_span(src, *s, *e)),
+                ));
+            }
+            let name = atom_required(src, &items[0], "constructor name")?;
+            let mut args = Vec::new();
+            for child in items.iter().skip(1) {
+                args.push(parse_rule_term(src, child)?);
+            }
+            Ok(LogicTerm::Ctor { name, args })
+        }
+    }
+}
+
+fn parse_rule_atom_term(
+    src: &str,
+    atom: &str,
+    start: usize,
+    end: usize,
+) -> Result<LogicTerm, Diagnostic> {
     if atom == "true" {
         return Ok(LogicTerm::Bool(true));
     }
@@ -814,16 +1122,15 @@ fn parse_rule_term(src: &str, node: &SExpr) -> Result<LogicTerm, Diagnostic> {
     }
     if let Some(rest) = atom.strip_prefix('?') {
         if rest.is_empty() {
-            let (s, e) = node.span_bounds();
             return Err(Diagnostic::new(
                 "E-PARSE",
                 "variable name cannot be empty",
-                Some(make_span(src, s, e)),
+                Some(make_span(src, start, end)),
             ));
         }
         return Ok(LogicTerm::Var(rest.to_string()));
     }
-    Ok(LogicTerm::Symbol(atom))
+    Ok(LogicTerm::Symbol(atom.to_string()))
 }
 
 fn parse_formula_term(
@@ -831,20 +1138,77 @@ fn parse_formula_term(
     node: &SExpr,
     scope: &HashSet<String>,
 ) -> Result<LogicTerm, Diagnostic> {
-    let atom = atom_required(src, node, "formula term")?;
-    if atom == "true" {
-        return Ok(LogicTerm::Bool(true));
+    match node {
+        SExpr::Atom(atom, _, _) => {
+            if atom == "true" {
+                return Ok(LogicTerm::Bool(true));
+            }
+            if atom == "false" {
+                return Ok(LogicTerm::Bool(false));
+            }
+            if let Ok(i) = atom.parse::<i64>() {
+                return Ok(LogicTerm::Int(i));
+            }
+            if scope.contains(atom) {
+                return Ok(LogicTerm::Var(atom.clone()));
+            }
+            Ok(LogicTerm::Symbol(atom.clone()))
+        }
+        SExpr::List(items, s, e) => {
+            if items.is_empty() {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "constructor term cannot be empty",
+                    Some(make_span(src, *s, *e)),
+                ));
+            }
+            let name = atom_required(src, &items[0], "constructor name")?;
+            let mut args = Vec::new();
+            for child in items.iter().skip(1) {
+                args.push(parse_formula_term(src, child, scope)?);
+            }
+            Ok(LogicTerm::Ctor { name, args })
+        }
     }
-    if atom == "false" {
-        return Ok(LogicTerm::Bool(false));
+}
+
+fn parse_const_term(src: &str, node: &SExpr) -> Result<LogicTerm, Diagnostic> {
+    match node {
+        SExpr::Atom(atom, s, e) => {
+            if atom == "true" {
+                return Ok(LogicTerm::Bool(true));
+            }
+            if atom == "false" {
+                return Ok(LogicTerm::Bool(false));
+            }
+            if let Ok(i) = atom.parse::<i64>() {
+                return Ok(LogicTerm::Int(i));
+            }
+            if atom.starts_with('?') {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "fact/universe cannot contain rule variables",
+                    Some(make_span(src, *s, *e)),
+                ));
+            }
+            Ok(LogicTerm::Symbol(atom.clone()))
+        }
+        SExpr::List(items, s, e) => {
+            if items.is_empty() {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "constructor term cannot be empty",
+                    Some(make_span(src, *s, *e)),
+                ));
+            }
+            let name = atom_required(src, &items[0], "constructor name")?;
+            let mut args = Vec::new();
+            for child in items.iter().skip(1) {
+                args.push(parse_const_term(src, child)?);
+            }
+            Ok(LogicTerm::Ctor { name, args })
+        }
     }
-    if let Ok(i) = atom.parse::<i64>() {
-        return Ok(LogicTerm::Int(i));
-    }
-    if scope.contains(&atom) {
-        return Ok(LogicTerm::Var(atom));
-    }
-    Ok(LogicTerm::Symbol(atom))
 }
 
 fn atom_required(src: &str, node: &SExpr, expected: &str) -> Result<String, Diagnostic> {

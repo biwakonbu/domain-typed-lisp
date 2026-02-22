@@ -58,12 +58,12 @@ fn e2e_example_ng_json_contract_is_stable() {
     let actual: Value = serde_json::from_slice(&output.stdout).expect("valid json");
     let expected = json!({
         "status": "error",
-        "diagnostics": [{
-            "code": "E-RESOLVE",
-            "message": "unknown function or relation: unknown",
-            "source": path.display().to_string(),
-            "hint": "sort/relation/関数名の定義漏れや重複定義を確認してください。",
-            "span": {
+            "diagnostics": [{
+                "code": "E-RESOLVE",
+                "message": "unknown function/relation/constructor: unknown",
+                "source": path.display().to_string(),
+                "hint": "sort/relation/関数名の定義漏れや重複定義を確認してください。",
+                "span": {
                 "start": 65,
                 "end": 76,
                 "line": 3,

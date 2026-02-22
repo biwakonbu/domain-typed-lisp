@@ -13,11 +13,11 @@ fn cli_returns_zero_for_valid_program() {
         r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         (defn can-read ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
-          (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
+          (can-access u r (read)))
         "#,
     )
     .expect("write");
@@ -70,7 +70,7 @@ fn cli_accepts_multiple_files() {
         r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         "#,
     )
@@ -79,8 +79,8 @@ fn cli_accepts_multiple_files() {
         &path2,
         r#"
         (defn can-read ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
-          (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
+          (can-access u r (read)))
         "#,
     )
     .expect("write");
@@ -103,7 +103,7 @@ fn cli_accepts_import_entry_file() {
         r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         "#,
     )
@@ -112,8 +112,8 @@ fn cli_accepts_import_entry_file() {
         &policy,
         r#"
         (defn can-read ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
-          (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
+          (can-access u r (read)))
         "#,
     )
     .expect("write");
@@ -189,11 +189,11 @@ fn cli_json_output_for_success() {
         r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         (defn can-read ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
-          (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
+          (can-access u r (read)))
         "#,
     )
     .expect("write");

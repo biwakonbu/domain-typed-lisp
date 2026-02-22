@@ -88,7 +88,7 @@ fn resolve_rejects_unknown_predicate_in_refinement() {
 fn resolve_rejects_arity_mismatch_in_refinement_predicate() {
     expect_resolve_error(
         "(relation p (Symbol Symbol)) (defn f ((x Symbol)) (Refine b Bool (p x)) true)",
-        "arity mismatch in refinement predicate",
+        "arity mismatch in predicate",
     );
 }
 

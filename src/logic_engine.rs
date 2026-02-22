@@ -11,6 +11,7 @@ pub enum Value {
     Symbol(String),
     Int(i64),
     Bool(bool),
+    Adt { ctor: String, fields: Vec<Value> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -246,34 +247,41 @@ fn unify(
     }
     let mut env = base.clone();
     for (term, val) in atom.terms.iter().zip(tuple.iter()) {
-        match term {
-            LogicTerm::Var(v) => {
-                if let Some(bound) = env.get(v) {
-                    if bound != val {
-                        return None;
-                    }
-                } else {
-                    env.insert(v.clone(), val.clone());
-                }
-            }
-            LogicTerm::Symbol(s) => {
-                if val != &Value::Symbol(s.clone()) {
-                    return None;
-                }
-            }
-            LogicTerm::Int(i) => {
-                if val != &Value::Int(*i) {
-                    return None;
-                }
-            }
-            LogicTerm::Bool(b) => {
-                if val != &Value::Bool(*b) {
-                    return None;
-                }
-            }
+        if !unify_term(term, val, &mut env) {
+            return None;
         }
     }
     Some(env)
+}
+
+fn unify_term(term: &LogicTerm, val: &Value, env: &mut HashMap<String, Value>) -> bool {
+    match term {
+        LogicTerm::Var(v) => {
+            if let Some(bound) = env.get(v) {
+                bound == val
+            } else {
+                env.insert(v.clone(), val.clone());
+                true
+            }
+        }
+        LogicTerm::Symbol(s) => matches!(val, Value::Symbol(x) if x == s),
+        LogicTerm::Int(i) => matches!(val, Value::Int(x) if x == i),
+        LogicTerm::Bool(b) => matches!(val, Value::Bool(x) if x == b),
+        LogicTerm::Ctor { name, args } => {
+            let Value::Adt { ctor, fields } = val else {
+                return false;
+            };
+            if name != ctor || args.len() != fields.len() {
+                return false;
+            }
+            for (arg, field) in args.iter().zip(fields.iter()) {
+                if !unify_term(arg, field, env) {
+                    return false;
+                }
+            }
+            true
+        }
+    }
 }
 
 fn instantiate_terms(
@@ -292,6 +300,17 @@ fn instantiate_terms(
             LogicTerm::Symbol(s) => out.push(Value::Symbol(s.clone())),
             LogicTerm::Int(i) => out.push(Value::Int(*i)),
             LogicTerm::Bool(b) => out.push(Value::Bool(*b)),
+            LogicTerm::Ctor { name, args } => {
+                let mut fields = Vec::new();
+                for arg in args {
+                    let mut inner = instantiate_terms(std::slice::from_ref(arg), env)?;
+                    fields.push(inner.remove(0));
+                }
+                out.push(Value::Adt {
+                    ctor: name.clone(),
+                    fields,
+                });
+            }
         }
     }
     Ok(out)
@@ -303,6 +322,16 @@ fn term_to_const_value(term: &LogicTerm) -> Option<Value> {
         LogicTerm::Symbol(s) => Some(Value::Symbol(s.clone())),
         LogicTerm::Int(i) => Some(Value::Int(*i)),
         LogicTerm::Bool(b) => Some(Value::Bool(*b)),
+        LogicTerm::Ctor { name, args } => {
+            let mut fields = Vec::new();
+            for arg in args {
+                fields.push(term_to_const_value(arg)?);
+            }
+            Some(Value::Adt {
+                ctor: name.clone(),
+                fields,
+            })
+        }
     }
 }
 
@@ -335,5 +364,14 @@ fn value_to_string(v: &Value) -> String {
         Value::Symbol(s) => s.clone(),
         Value::Int(i) => i.to_string(),
         Value::Bool(b) => b.to_string(),
+        Value::Adt { ctor, fields } => {
+            let mut rendered = format!("({ctor}");
+            for field in fields {
+                rendered.push(' ');
+                rendered.push_str(&value_to_string(field));
+            }
+            rendered.push(')');
+            rendered
+        }
     }
 }

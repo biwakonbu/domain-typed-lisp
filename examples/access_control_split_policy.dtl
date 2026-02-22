@@ -1,10 +1,10 @@
 (fact has-role alice admin)
 (fact resource-public doc1)
 
-(rule (can-access ?u ?r read)
+(rule (can-access ?u ?r (read))
       (and (has-role ?u admin)
            (resource-public ?r)))
 
 (defn can-read ((u Subject) (r Resource))
-  (Refine b Bool (can-access u r read))
-  (can-access u r read))
+  (Refine b Bool (can-access u r (read)))
+  (can-access u r (read)))

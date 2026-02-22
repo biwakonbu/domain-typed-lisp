@@ -44,9 +44,9 @@ proptest! {
     #[test]
     fn alpha_renaming_keeps_typecheck_result(name in "[a-z]{1,3}") {
         prop_assume!(name != "r");
-        let src1 = "(sort Subject)\n(sort Resource)\n(sort Action)\n(relation can-access (Subject Resource Action))\n(defn f ((u Subject) (r Resource)) (Refine b Bool (can-access u r read)) (can-access u r read))".to_string();
+        let src1 = "(sort Subject)\n(sort Resource)\n(data Action (read))\n(relation can-access (Subject Resource Action))\n(defn f ((u Subject) (r Resource)) (Refine b Bool (can-access u r (read))) (can-access u r (read)))".to_string();
         let src2 = format!(
-            "(sort Subject)\n(sort Resource)\n(sort Action)\n(relation can-access (Subject Resource Action))\n(defn f (({} Subject) (r Resource)) (Refine b Bool (can-access {} r read)) (can-access {} r read))",
+            "(sort Subject)\n(sort Resource)\n(data Action (read))\n(relation can-access (Subject Resource Action))\n(defn f (({} Subject) (r Resource)) (Refine b Bool (can-access {} r (read))) (can-access {} r (read)))",
             name, name, name
         );
 

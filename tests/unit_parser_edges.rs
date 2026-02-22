@@ -35,7 +35,7 @@ fn parser_rejects_relation_non_list_args() {
 fn parser_rejects_fact_variable() {
     expect_parse_error(
         "(relation p (Symbol)) (fact p ?x)",
-        "fact cannot contain variables",
+        "fact/universe cannot contain rule variables",
     );
 }
 

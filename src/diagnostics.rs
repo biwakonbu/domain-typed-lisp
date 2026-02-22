@@ -73,6 +73,10 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
         "E-ENTAIL" => {
             Some("Refinement の前提事実・規則を追加し、含意が導出可能か確認してください。")
         }
+        "E-TOTAL" => Some("再帰呼び出しを除去し、全関数（停止性保証）として定義してください。"),
+        "E-DATA" => Some("data 宣言の重複・再帰・constructor の整合性を確認してください。"),
+        "E-MATCH" => Some("match の網羅性・到達不能分岐・パターン型整合性を確認してください。"),
+        "E-PROVE" => Some("universe と証明義務を確認し、反例トレースを参照して修正してください。"),
         _ => None,
     }
 }

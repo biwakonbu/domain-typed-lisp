@@ -48,7 +48,7 @@ fn typecheck_rejects_non_literal_relation_arg() {
     expect_type_error(
         "(relation p (Symbol)) (defn id ((x Symbol)) Symbol x) (defn f ((x Symbol)) Bool (p (id x)))",
         "E-TYPE",
-        "relation argument must be variable or literal",
+        "relation argument must be variable/literal/constructor",
     );
 }
 
@@ -57,13 +57,13 @@ fn typecheck_accepts_entailment_via_rule() {
     let src = r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         (relation granted (Subject Resource))
-        (rule (can-access ?u ?r read) (granted ?u ?r))
+        (rule (can-access ?u ?r (read)) (granted ?u ?r))
 
         (defn f ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
           (granted u r))
     "#;
     let program = parse_program(src).expect("parse should succeed");
@@ -101,17 +101,17 @@ fn typecheck_accepts_entailment_with_conjunction_and_rule() {
 #[test]
 fn typecheck_accepts_vacuous_entailment_with_negated_antecedent() {
     let src = r#"
-        (sort Subject)
+        (data Subject (alice))
         (relation denied (Subject))
-        (fact denied alice)
+        (fact denied (alice))
 
         (defn witness ((u Subject))
           (Refine b Bool (not (denied u)))
           true)
 
-        (defn caller ((u Subject))
-          (Refine b Bool (not (denied alice)))
-          (witness alice))
+        (defn caller ()
+          (Refine b Bool (not (denied (alice))))
+          (witness (alice)))
     "#;
     let program = parse_program(src).expect("parse should succeed");
     let report = check_program(&program).expect("typecheck should succeed");

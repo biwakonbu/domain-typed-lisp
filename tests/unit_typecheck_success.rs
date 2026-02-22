@@ -25,14 +25,15 @@ fn typecheck_accepts_function_value_and_call() {
 }
 
 #[test]
-fn typecheck_accepts_domain_as_symbol_argument() {
+fn typecheck_rejects_domain_as_symbol_argument_without_constructor() {
     let src = r#"
         (sort Subject)
         (defn takes-symbol ((x Symbol)) Bool true)
         (defn caller ((u Subject)) Bool (takes-symbol u))
     "#;
     let program = parse_program(src).expect("parse");
-    assert!(check_program(&program).is_ok());
+    let errs = check_program(&program).expect_err("typecheck should fail");
+    assert!(errs.iter().any(|d| d.code == "E-TYPE"));
 }
 
 #[test]

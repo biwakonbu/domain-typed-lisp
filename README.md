@@ -3,51 +3,50 @@
 ![CI](https://img.shields.io/github/actions/workflow/status/biwakonbu/domain-typed-lisp/ci.yml?branch=main&label=ci)
 [![Coverage](https://codecov.io/gh/biwakonbu/domain-typed-lisp/branch/main/graph/badge.svg)](https://codecov.io/gh/biwakonbu/domain-typed-lisp)
 
-Datalog 系 Horn 節 + 層化否定を土台に、Refinement 型 `{x:T | P(x)}` を統合した静的型解析向け Lisp DSL の MVP 実装です。
+`dtl` は、ドメイン定義 DSL を純粋・非破壊に検査/証明/文書化するための Lisp 系言語です。
 
-この言語での計算は目的ではなく、ドメイン上の論理的一貫性を型とランタイム導出で検証するための手段として扱います。
-
-## MVP の目的
-- `dtl check <FILE>...` で 1 つ以上の DSL ファイルを静的検査する。
-- 型整合性、Refinement 含意判定、層化否定検査を実施する。
-- 実行器は提供せず、静的解析 CLI に限定する。
-
-## 非ゴール
-- 高度なモジュールシステム（名前空間、公開制御、再エクスポート）
-- 実行器・評価器
-- SMT 連携
-- 依存型機能
+- 静的検査: 型整合・層化否定・`match` 網羅性・全域性（再帰禁止）
+- 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
+- ドキュメント生成: 証明成功時のみ `spec.md` と `proof-trace.json` を出力
 
 ## クイックスタート
 ```bash
 cargo build
 cargo run -- check examples/access_control_ok.dtl
-cargo run -- check examples/access_control_ok.dtl --format json
-cargo run -- check examples/access_control_split_schema.dtl examples/access_control_split_policy.dtl
-cargo run -- check examples/access_control_import_entry.dtl
+cargo run -- prove examples/access_control_ok.dtl --format json --out out
+cargo run -- doc examples/access_control_ok.dtl --out out
 ```
 
-## CLI 出力
-- `dtl check <FILE>...`: 人間可読な診断を出力（既定）
-- `dtl check <FILE>... --format json`: 機械可読 JSON を標準出力へ出力
-  - 成功: `{"status":"ok","report":{"functions_checked":...,"errors":0}}`
-  - 失敗: `{"status":"error","diagnostics":[{"code":"...","message":"...","source":"..."}]}`
+## CLI
+
+### `check`
+```bash
+dtl check <FILE>... [--format text|json]
+```
+- 構文/名前解決/層化否定/型検査/全域性/`match` を検査する。
+
+### `prove`
+```bash
+dtl prove <FILE>... [--format text|json] [--out DIR]
+```
+- 有限モデル検証を実行し、`--out` 指定時は `proof-trace.json` を生成する。
+
+### `doc`
+```bash
+dtl doc <FILE>... --out DIR [--format markdown|json]
+```
+- すべての義務が証明された場合のみ `spec.md` / `proof-trace.json` / `doc-index.json` を出力する。
 
 ## 検証コマンド
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --bins --tests
-cargo test --test integration_cli
-cargo test --test property_logic
-cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 80
-cargo bench --bench perf_scaling
 ```
 
 ## ドキュメント
-- [MVP ゴール](docs/mvp-goal.md)
-- [言語仕様](docs/language-spec.md)
-- [複数ファイル入力の最小設計](docs/multi-file-minimal-design.md)
+- [言語仕様 v0.2](docs/language-spec.md)
+- [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
+- [v0.2 移行ガイド](docs/migration-v0.2.md)
 - [検証計画](docs/verification-plan.md)
 - [テストマトリクス](docs/test-matrix.md)
-- [ADR: MVP アーキテクチャ](docs/adr/0001-mvp-architecture.md)

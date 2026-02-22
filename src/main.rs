@@ -3,12 +3,15 @@ use std::path::{Path, PathBuf};
 use std::{collections::HashSet, fmt::Write};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use dtl::{Diagnostic, Program, Span, check_program, parse_program};
+use dtl::{
+    Diagnostic, Program, ProofTrace, Span, check_program, generate_doc_bundle,
+    has_failed_obligation, parse_program, prove_program, write_proof_trace,
+};
 use serde::Serialize;
 
 #[derive(Debug, Parser)]
 #[command(name = "dtl")]
-#[command(about = "Domain Typed Lisp checker")]
+#[command(about = "Domain Typed Lisp checker/prover")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -22,11 +25,33 @@ enum Command {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },
+    Prove {
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    Doc {
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_enum, default_value_t = DocFormat::Markdown)]
+        format: DocFormat,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     Text,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum DocFormat {
+    Markdown,
     Json,
 }
 
@@ -65,10 +90,21 @@ struct JsonSpan {
     column: usize,
 }
 
+#[derive(Debug, Serialize)]
+struct ProveJsonResponse {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof: Option<ProofTrace>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    diagnostics: Vec<JsonDiagnostic>,
+}
+
 fn main() {
     let cli = Cli::parse();
     let exit_code = match cli.command {
         Command::Check { files, format } => run_check(&files, format),
+        Command::Prove { files, format, out } => run_prove(&files, format, out.as_deref()),
+        Command::Doc { files, out, format } => run_doc(&files, &out, format),
     };
     std::process::exit(exit_code);
 }
@@ -93,6 +129,109 @@ fn run_check(files: &[PathBuf], format: OutputFormat) -> i32 {
             1
         }
     }
+}
+
+fn run_prove(files: &[PathBuf], format: OutputFormat, out: Option<&Path>) -> i32 {
+    let program = match load_program(files) {
+        Ok(program) => program,
+        Err(diags) => {
+            emit_error(&diags, format);
+            return 1;
+        }
+    };
+
+    let trace = match prove_program(&program) {
+        Ok(trace) => trace,
+        Err(diags) => {
+            let diags = attach_single_source_if_missing(diags, files);
+            match format {
+                OutputFormat::Text => emit_error(&diags, OutputFormat::Text),
+                OutputFormat::Json => emit_json(ProveJsonResponse {
+                    status: "error",
+                    proof: None,
+                    diagnostics: diags.iter().map(as_json_diagnostic).collect(),
+                }),
+            }
+            return 1;
+        }
+    };
+
+    if let Some(out_dir) = out {
+        if let Err(err) = fs::create_dir_all(out_dir) {
+            let diag = Diagnostic::new(
+                "E-IO",
+                format!(
+                    "failed to create output directory {}: {err}",
+                    out_dir.display()
+                ),
+                None,
+            );
+            emit_error(&[diag], format);
+            return 1;
+        }
+        let path = out_dir.join("proof-trace.json");
+        if let Err(diag) = write_proof_trace(&path, &trace) {
+            emit_error(&[diag], format);
+            return 1;
+        }
+    }
+
+    let failed = has_failed_obligation(&trace);
+    match format {
+        OutputFormat::Text => {
+            if failed {
+                eprintln!("proof failed");
+                for obligation in &trace.obligations {
+                    if obligation.result != "proved" {
+                        eprintln!("- {}", obligation.id);
+                    }
+                }
+            } else {
+                println!("ok");
+            }
+        }
+        OutputFormat::Json => {
+            emit_json(ProveJsonResponse {
+                status: if failed { "error" } else { "ok" },
+                proof: Some(trace),
+                diagnostics: Vec::new(),
+            });
+        }
+    }
+
+    if failed { 1 } else { 0 }
+}
+
+fn run_doc(files: &[PathBuf], out: &Path, _format: DocFormat) -> i32 {
+    let program = match load_program(files) {
+        Ok(program) => program,
+        Err(diags) => {
+            for d in diags {
+                eprintln!("{d}");
+            }
+            return 1;
+        }
+    };
+
+    let trace = match prove_program(&program) {
+        Ok(trace) => trace,
+        Err(diags) => {
+            for d in attach_single_source_if_missing(diags, files) {
+                eprintln!("{d}");
+            }
+            return 1;
+        }
+    };
+
+    if let Err(diags) = generate_doc_bundle(&program, &trace, out) {
+        for d in diags {
+            eprintln!("{d}");
+        }
+        return 1;
+    }
+
+    println!("ok");
+    0
 }
 
 fn load_program(files: &[PathBuf]) -> Result<Program, Vec<Diagnostic>> {
@@ -228,9 +367,12 @@ fn render_cycle(stack: &[PathBuf], target: &Path) -> String {
 fn merge_program(dst: &mut Program, src: Program) {
     dst.imports.extend(src.imports);
     dst.sorts.extend(src.sorts);
+    dst.data_decls.extend(src.data_decls);
     dst.relations.extend(src.relations);
     dst.facts.extend(src.facts);
     dst.rules.extend(src.rules);
+    dst.asserts.extend(src.asserts);
+    dst.universes.extend(src.universes);
     dst.defns.extend(src.defns);
 }
 
@@ -283,7 +425,7 @@ fn emit_error(diags: &[Diagnostic], format: OutputFormat) {
     }
 }
 
-fn emit_json(output: JsonResponse) {
+fn emit_json<T: Serialize>(output: T) {
     let rendered = serde_json::to_string(&output).expect("serialize JSON output");
     println!("{rendered}");
 }

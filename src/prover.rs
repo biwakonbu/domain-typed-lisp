@@ -1,0 +1,855 @@
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs;
+use std::path::Path;
+
+use serde::Serialize;
+
+use crate::ast::{Expr, Program};
+use crate::diagnostics::Diagnostic;
+use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
+use crate::name_resolve::resolve_program;
+use crate::stratify::compute_strata;
+use crate::typecheck::check_program;
+use crate::types::{Atom, Formula, LogicTerm, Type};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProofTrace {
+    pub schema_version: String,
+    pub obligations: Vec<ObligationTrace>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ObligationTrace {
+    pub id: String,
+    pub kind: String,
+    pub result: String,
+    pub valuation: Vec<NameValue>,
+    pub premises: Vec<String>,
+    pub derived: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counterexample: Option<CounterexampleTrace>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NameValue {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CounterexampleTrace {
+    pub valuation: Vec<NameValue>,
+    pub premises: Vec<String>,
+    pub missing_goals: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ObligationSpec {
+    id: String,
+    kind: String,
+    lhs: Formula,
+    rhs: Formula,
+    vars: Vec<(String, Type)>,
+}
+
+pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
+    let mut errors = resolve_program(program);
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+    if let Err(mut e) = compute_strata(program) {
+        errors.append(&mut e);
+        return Err(errors);
+    }
+    if let Err(mut e) = check_program(program) {
+        errors.append(&mut e);
+        return Err(errors);
+    }
+
+    let kb = KnowledgeBase::from_program(program)?;
+    let universe_map = build_universe_map(program)?;
+    let obligations = build_obligations(program);
+
+    let mut traces = Vec::new();
+    for obligation in obligations {
+        let valuations = enumerate_valuations(&obligation.vars, &universe_map)?;
+
+        let mut failed = None;
+        for valuation in valuations {
+            let lhs = substitute_formula_values(&obligation.lhs, &valuation);
+            let rhs = substitute_formula_values(&obligation.rhs, &valuation);
+
+            let assumptions = positive_atoms(&lhs)
+                .into_iter()
+                .filter_map(atom_to_ground_fact)
+                .collect::<Vec<_>>();
+            let trial = kb.with_extra_facts(assumptions.clone());
+            let derived = solve_facts(&trial).map_err(wrap_as_prove_error)?;
+
+            if eval_formula(&lhs, &derived) && !eval_formula(&rhs, &derived) {
+                let minimized = minimize_premises(&kb, &lhs, &rhs, &assumptions)?;
+                let derived_for_min = solve_facts(&kb.with_extra_facts(minimized.clone()))
+                    .map_err(wrap_as_prove_error)?;
+                failed = Some((valuation, minimized, derived_for_min, rhs));
+                break;
+            }
+        }
+
+        if let Some((valuation, premises, derived, rhs)) = failed {
+            traces.push(ObligationTrace {
+                id: obligation.id,
+                kind: obligation.kind,
+                result: "failed".to_string(),
+                valuation: render_valuation(&valuation),
+                premises: render_premises(&premises),
+                derived: render_derived(&derived),
+                counterexample: Some(CounterexampleTrace {
+                    valuation: render_valuation(&valuation),
+                    premises: render_premises(&premises),
+                    missing_goals: render_missing_goals(&rhs, &derived),
+                }),
+            });
+        } else {
+            traces.push(ObligationTrace {
+                id: obligation.id,
+                kind: obligation.kind,
+                result: "proved".to_string(),
+                valuation: Vec::new(),
+                premises: Vec::new(),
+                derived: Vec::new(),
+                counterexample: None,
+            });
+        }
+    }
+
+    Ok(ProofTrace {
+        schema_version: "1.0.0".to_string(),
+        obligations: traces,
+    })
+}
+
+pub fn has_failed_obligation(trace: &ProofTrace) -> bool {
+    trace.obligations.iter().any(|o| o.result != "proved")
+}
+
+pub fn write_proof_trace(path: &Path, trace: &ProofTrace) -> Result<(), Diagnostic> {
+    let rendered = serde_json::to_string_pretty(trace).map_err(|e| {
+        Diagnostic::new(
+            "E-IO",
+            format!("failed to serialize proof trace: {e}"),
+            None,
+        )
+    })?;
+    fs::write(path, rendered).map_err(|e| {
+        Diagnostic::new(
+            "E-IO",
+            format!("failed to write {}: {e}", path.display()),
+            None,
+        )
+    })
+}
+
+pub fn generate_doc_bundle(
+    program: &Program,
+    trace: &ProofTrace,
+    out_dir: &Path,
+) -> Result<(), Vec<Diagnostic>> {
+    if has_failed_obligation(trace) {
+        return Err(vec![Diagnostic::new(
+            "E-PROVE",
+            "cannot generate documentation because there are unproved obligations",
+            None,
+        )]);
+    }
+
+    fs::create_dir_all(out_dir).map_err(|e| {
+        vec![Diagnostic::new(
+            "E-IO",
+            format!(
+                "failed to create output directory {}: {e}",
+                out_dir.display()
+            ),
+            None,
+        )]
+    })?;
+
+    let proof_path = out_dir.join("proof-trace.json");
+    write_proof_trace(&proof_path, trace).map_err(|d| vec![d])?;
+
+    let spec_path = out_dir.join("spec.md");
+    let spec = render_spec_markdown(program, trace);
+    fs::write(&spec_path, spec).map_err(|e| {
+        vec![Diagnostic::new(
+            "E-IO",
+            format!("failed to write {}: {e}", spec_path.display()),
+            None,
+        )]
+    })?;
+
+    let index = serde_json::json!({
+        "schema_version": "1.0.0",
+        "files": ["spec.md", "proof-trace.json"],
+        "status": "ok"
+    });
+    let index_path = out_dir.join("doc-index.json");
+    fs::write(
+        &index_path,
+        serde_json::to_string_pretty(&index).expect("serialize doc index"),
+    )
+    .map_err(|e| {
+        vec![Diagnostic::new(
+            "E-IO",
+            format!("failed to write {}: {e}", index_path.display()),
+            None,
+        )]
+    })?;
+
+    Ok(())
+}
+
+fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
+    let mut out = String::new();
+    out.push_str("# Domain Specification\n\n");
+
+    out.push_str("## Sorts\n");
+    for sort in &program.sorts {
+        out.push_str(&format!("- {}\n", sort.name));
+    }
+    out.push('\n');
+
+    out.push_str("## Data Declarations\n");
+    for data in &program.data_decls {
+        out.push_str(&format!("- {}\n", data.name));
+        for ctor in &data.constructors {
+            let fields = ctor
+                .fields
+                .iter()
+                .map(type_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!("  - {}({})\n", ctor.name, fields));
+        }
+    }
+    out.push('\n');
+
+    out.push_str("## Relations\n");
+    for rel in &program.relations {
+        let args = rel.arg_sorts.join(", ");
+        out.push_str(&format!("- {}({})\n", rel.name, args));
+    }
+    out.push('\n');
+
+    out.push_str("## Assertions\n");
+    for a in &program.asserts {
+        out.push_str(&format!("- {}\n", a.name));
+    }
+    out.push('\n');
+
+    out.push_str("## Proof Status\n");
+    for o in &trace.obligations {
+        out.push_str(&format!("- {} [{}]\n", o.id, o.result));
+    }
+
+    out
+}
+
+fn type_to_string(ty: &Type) -> String {
+    match ty {
+        Type::Bool => "Bool".to_string(),
+        Type::Int => "Int".to_string(),
+        Type::Symbol => "Symbol".to_string(),
+        Type::Domain(s) => s.clone(),
+        Type::Adt(s) => s.clone(),
+        Type::Fun(args, ret) => format!(
+            "(-> ({}) {})",
+            args.iter()
+                .map(type_to_string)
+                .collect::<Vec<_>>()
+                .join(" "),
+            type_to_string(ret)
+        ),
+        Type::Refine { var, base, formula } => {
+            format!(
+                "(Refine {} {} {})",
+                var,
+                type_to_string(base),
+                formula_to_string(formula)
+            )
+        }
+    }
+}
+
+fn formula_to_string(formula: &Formula) -> String {
+    match formula {
+        Formula::True => "true".to_string(),
+        Formula::Atom(atom) => {
+            let args = atom
+                .terms
+                .iter()
+                .map(logic_term_to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("({} {})", atom.pred, args).trim_end().to_string()
+        }
+        Formula::And(items) => format!(
+            "(and {})",
+            items
+                .iter()
+                .map(formula_to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        Formula::Not(inner) => format!("(not {})", formula_to_string(inner)),
+    }
+}
+
+fn build_universe_map(program: &Program) -> Result<HashMap<String, Vec<Value>>, Vec<Diagnostic>> {
+    let mut map = HashMap::new();
+    for u in &program.universes {
+        let mut vals = Vec::new();
+        for term in &u.values {
+            let Some(v) = logic_term_to_const_value(term) else {
+                return Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!("universe value contains variable: {}", u.ty_name),
+                    Some(u.span.clone()),
+                )]);
+            };
+            vals.push(v);
+        }
+        map.insert(u.ty_name.clone(), vals);
+    }
+    Ok(map)
+}
+
+fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
+    let relation_names: HashSet<String> =
+        program.relations.iter().map(|r| r.name.clone()).collect();
+    let constructor_names: HashSet<String> = program
+        .data_decls
+        .iter()
+        .flat_map(|d| d.constructors.iter().map(|c| c.name.clone()))
+        .collect();
+
+    let mut obligations = Vec::new();
+
+    for defn in &program.defns {
+        if let Type::Refine { formula, .. } = &defn.ret_type {
+            let lhs = formula_from_expr(&defn.body, &relation_names, &constructor_names)
+                .unwrap_or(Formula::True);
+            let vars = defn
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect::<Vec<_>>();
+            obligations.push(ObligationSpec {
+                id: format!("defn::{}", defn.name),
+                kind: "defn".to_string(),
+                lhs,
+                rhs: formula.clone(),
+                vars,
+            });
+        }
+    }
+
+    for assertion in &program.asserts {
+        obligations.push(ObligationSpec {
+            id: format!("assert::{}", assertion.name),
+            kind: "assert".to_string(),
+            lhs: Formula::True,
+            rhs: assertion.formula.clone(),
+            vars: assertion
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect(),
+        });
+    }
+
+    obligations
+}
+
+fn formula_from_expr(
+    expr: &Expr,
+    relation_names: &HashSet<String>,
+    constructor_names: &HashSet<String>,
+) -> Option<Formula> {
+    match expr {
+        Expr::Bool { value, .. } => {
+            if *value {
+                Some(Formula::True)
+            } else {
+                Some(Formula::Not(Box::new(Formula::True)))
+            }
+        }
+        Expr::Call { name, args, .. } if relation_names.contains(name) => {
+            let mut terms = Vec::new();
+            for arg in args {
+                terms.push(expr_to_logic_term(arg, constructor_names)?);
+            }
+            Some(Formula::Atom(Atom {
+                pred: name.clone(),
+                terms,
+            }))
+        }
+        Expr::Let { bindings, body, .. } => {
+            let mut subst = HashMap::new();
+            for (name, bexpr, _) in bindings {
+                let term = expr_to_logic_term(bexpr, constructor_names)?;
+                subst.insert(name.clone(), term);
+            }
+            let base = formula_from_expr(body, relation_names, constructor_names)?;
+            Some(substitute_formula_terms(&base, &subst))
+        }
+        Expr::Var { .. }
+        | Expr::Symbol { .. }
+        | Expr::Int { .. }
+        | Expr::If { .. }
+        | Expr::Match { .. }
+        | Expr::Call { .. } => None,
+    }
+}
+
+fn expr_to_logic_term(expr: &Expr, constructor_names: &HashSet<String>) -> Option<LogicTerm> {
+    match expr {
+        Expr::Var { name, .. } => Some(LogicTerm::Var(name.clone())),
+        Expr::Symbol { value, .. } => Some(LogicTerm::Symbol(value.clone())),
+        Expr::Int { value, .. } => Some(LogicTerm::Int(*value)),
+        Expr::Bool { value, .. } => Some(LogicTerm::Bool(*value)),
+        Expr::Call { name, args, .. } if constructor_names.contains(name) => {
+            let mut parsed_args = Vec::new();
+            for arg in args {
+                parsed_args.push(expr_to_logic_term(arg, constructor_names)?);
+            }
+            Some(LogicTerm::Ctor {
+                name: name.clone(),
+                args: parsed_args,
+            })
+        }
+        Expr::Call { .. } | Expr::Let { .. } | Expr::If { .. } | Expr::Match { .. } => None,
+    }
+}
+
+fn substitute_formula_terms(formula: &Formula, subst: &HashMap<String, LogicTerm>) -> Formula {
+    match formula {
+        Formula::True => Formula::True,
+        Formula::Atom(atom) => Formula::Atom(Atom {
+            pred: atom.pred.clone(),
+            terms: atom
+                .terms
+                .iter()
+                .map(|t| substitute_term(t, subst))
+                .collect(),
+        }),
+        Formula::And(items) => Formula::And(
+            items
+                .iter()
+                .map(|item| substitute_formula_terms(item, subst))
+                .collect(),
+        ),
+        Formula::Not(inner) => Formula::Not(Box::new(substitute_formula_terms(inner, subst))),
+    }
+}
+
+fn substitute_term(term: &LogicTerm, subst: &HashMap<String, LogicTerm>) -> LogicTerm {
+    match term {
+        LogicTerm::Var(v) => subst
+            .get(v)
+            .cloned()
+            .unwrap_or_else(|| LogicTerm::Var(v.clone())),
+        LogicTerm::Ctor { name, args } => LogicTerm::Ctor {
+            name: name.clone(),
+            args: args.iter().map(|a| substitute_term(a, subst)).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn enumerate_valuations(
+    vars: &[(String, Type)],
+    universe_map: &HashMap<String, Vec<Value>>,
+) -> Result<Vec<HashMap<String, Value>>, Vec<Diagnostic>> {
+    let mut domains = Vec::new();
+    for (name, ty) in vars {
+        let key = type_key(ty)?;
+        let Some(values) = universe_map.get(&key) else {
+            return Err(vec![Diagnostic::new(
+                "E-PROVE",
+                format!("missing universe declaration for type: {key}"),
+                None,
+            )]);
+        };
+        if values.is_empty() {
+            return Err(vec![Diagnostic::new(
+                "E-PROVE",
+                format!("universe for type {key} must not be empty"),
+                None,
+            )]);
+        }
+        domains.push((name.clone(), values.clone()));
+    }
+
+    let mut out = Vec::new();
+    let mut current = HashMap::new();
+    enumerate_cartesian(&domains, 0, &mut current, &mut out);
+    Ok(out)
+}
+
+fn enumerate_cartesian(
+    domains: &[(String, Vec<Value>)],
+    idx: usize,
+    current: &mut HashMap<String, Value>,
+    out: &mut Vec<HashMap<String, Value>>,
+) {
+    if idx == domains.len() {
+        out.push(current.clone());
+        return;
+    }
+
+    let (name, values) = &domains[idx];
+    for value in values {
+        current.insert(name.clone(), value.clone());
+        enumerate_cartesian(domains, idx + 1, current, out);
+    }
+}
+
+fn type_key(ty: &Type) -> Result<String, Vec<Diagnostic>> {
+    match ty {
+        Type::Bool => Ok("Bool".to_string()),
+        Type::Int => Ok("Int".to_string()),
+        Type::Symbol => Ok("Symbol".to_string()),
+        Type::Domain(name) | Type::Adt(name) => Ok(name.clone()),
+        Type::Refine { base, .. } => type_key(base),
+        Type::Fun(_, _) => Err(vec![Diagnostic::new(
+            "E-PROVE",
+            "function-typed quantified variables are not supported in prove",
+            None,
+        )]),
+    }
+}
+
+fn substitute_formula_values(formula: &Formula, valuation: &HashMap<String, Value>) -> Formula {
+    match formula {
+        Formula::True => Formula::True,
+        Formula::Atom(atom) => Formula::Atom(Atom {
+            pred: atom.pred.clone(),
+            terms: atom
+                .terms
+                .iter()
+                .map(|t| substitute_term_value(t, valuation))
+                .collect(),
+        }),
+        Formula::And(items) => Formula::And(
+            items
+                .iter()
+                .map(|item| substitute_formula_values(item, valuation))
+                .collect(),
+        ),
+        Formula::Not(inner) => Formula::Not(Box::new(substitute_formula_values(inner, valuation))),
+    }
+}
+
+fn substitute_term_value(term: &LogicTerm, valuation: &HashMap<String, Value>) -> LogicTerm {
+    match term {
+        LogicTerm::Var(name) => valuation
+            .get(name)
+            .map(value_to_logic_term)
+            .unwrap_or_else(|| LogicTerm::Var(name.clone())),
+        LogicTerm::Ctor { name, args } => LogicTerm::Ctor {
+            name: name.clone(),
+            args: args
+                .iter()
+                .map(|arg| substitute_term_value(arg, valuation))
+                .collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn value_to_logic_term(value: &Value) -> LogicTerm {
+    match value {
+        Value::Symbol(s) => LogicTerm::Symbol(s.clone()),
+        Value::Int(i) => LogicTerm::Int(*i),
+        Value::Bool(b) => LogicTerm::Bool(*b),
+        Value::Adt { ctor, fields } => LogicTerm::Ctor {
+            name: ctor.clone(),
+            args: fields.iter().map(value_to_logic_term).collect(),
+        },
+    }
+}
+
+fn positive_atoms(formula: &Formula) -> Vec<Atom> {
+    let mut out = Vec::new();
+    collect_positive_atoms(formula, false, &mut out);
+    out
+}
+
+fn collect_positive_atoms(formula: &Formula, neg: bool, out: &mut Vec<Atom>) {
+    match formula {
+        Formula::True => {}
+        Formula::Atom(atom) => {
+            if !neg {
+                out.push(atom.clone());
+            }
+        }
+        Formula::And(items) => {
+            for item in items {
+                collect_positive_atoms(item, neg, out);
+            }
+        }
+        Formula::Not(inner) => collect_positive_atoms(inner, !neg, out),
+    }
+}
+
+fn atom_to_ground_fact(atom: Atom) -> Option<GroundFact> {
+    let mut terms = Vec::new();
+    for term in atom.terms {
+        terms.push(logic_term_to_const_value(&term)?);
+    }
+    Some(GroundFact {
+        pred: atom.pred,
+        terms,
+    })
+}
+
+fn logic_term_to_const_value(term: &LogicTerm) -> Option<Value> {
+    match term {
+        LogicTerm::Var(_) => None,
+        LogicTerm::Symbol(s) => Some(Value::Symbol(s.clone())),
+        LogicTerm::Int(i) => Some(Value::Int(*i)),
+        LogicTerm::Bool(b) => Some(Value::Bool(*b)),
+        LogicTerm::Ctor { name, args } => {
+            let mut fields = Vec::new();
+            for arg in args {
+                fields.push(logic_term_to_const_value(arg)?);
+            }
+            Some(Value::Adt {
+                ctor: name.clone(),
+                fields,
+            })
+        }
+    }
+}
+
+fn eval_formula(formula: &Formula, derived: &DerivedFacts) -> bool {
+    match formula {
+        Formula::True => true,
+        Formula::Atom(atom) => {
+            let Some(tuple) = atom
+                .terms
+                .iter()
+                .map(logic_term_to_const_value)
+                .collect::<Option<Vec<_>>>()
+            else {
+                return false;
+            };
+            derived
+                .facts
+                .get(&atom.pred)
+                .map(|set| set.contains(&tuple))
+                .unwrap_or(false)
+        }
+        Formula::And(items) => items.iter().all(|item| eval_formula(item, derived)),
+        Formula::Not(inner) => !eval_formula(inner, derived),
+    }
+}
+
+fn minimize_premises(
+    kb: &KnowledgeBase,
+    lhs: &Formula,
+    rhs: &Formula,
+    assumptions: &[GroundFact],
+) -> Result<Vec<GroundFact>, Vec<Diagnostic>> {
+    let mut sorted = assumptions.to_vec();
+    sorted.sort_by_key(ground_fact_key);
+
+    for size in 0..=sorted.len() {
+        let mut search = SubsetSearch {
+            kb,
+            lhs,
+            rhs,
+            sorted: &sorted,
+            found: None,
+        };
+        search.search(size, 0, &mut Vec::new())?;
+        if let Some(premises) = search.found {
+            return Ok(premises);
+        }
+    }
+
+    Ok(sorted)
+}
+
+struct SubsetSearch<'a> {
+    kb: &'a KnowledgeBase,
+    lhs: &'a Formula,
+    rhs: &'a Formula,
+    sorted: &'a [GroundFact],
+    found: Option<Vec<GroundFact>>,
+}
+
+impl<'a> SubsetSearch<'a> {
+    fn search(
+        &mut self,
+        target: usize,
+        start: usize,
+        picked: &mut Vec<usize>,
+    ) -> Result<(), Vec<Diagnostic>> {
+        if self.found.is_some() {
+            return Ok(());
+        }
+        if picked.len() == target {
+            let subset = picked
+                .iter()
+                .map(|i| self.sorted[*i].clone())
+                .collect::<Vec<_>>();
+            let derived = solve_facts(&self.kb.with_extra_facts(subset.clone()))
+                .map_err(wrap_as_prove_error)?;
+            if eval_formula(self.lhs, &derived) && !eval_formula(self.rhs, &derived) {
+                self.found = Some(subset);
+            }
+            return Ok(());
+        }
+
+        for i in start..self.sorted.len() {
+            picked.push(i);
+            self.search(target, i + 1, picked)?;
+            picked.pop();
+            if self.found.is_some() {
+                return Ok(());
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn ground_fact_key(f: &GroundFact) -> String {
+    let args = f
+        .terms
+        .iter()
+        .map(value_to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{}({})", f.pred, args)
+}
+
+fn wrap_as_prove_error(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diags
+        .into_iter()
+        .map(|d| Diagnostic::new("E-PROVE", d.message, d.span))
+        .collect()
+}
+
+fn render_valuation(valuation: &HashMap<String, Value>) -> Vec<NameValue> {
+    let mut map = BTreeMap::new();
+    for (k, v) in valuation {
+        map.insert(k.clone(), value_to_string(v));
+    }
+    map.into_iter()
+        .map(|(name, value)| NameValue { name, value })
+        .collect()
+}
+
+fn render_premises(premises: &[GroundFact]) -> Vec<String> {
+    let mut out = premises.iter().map(ground_fact_key).collect::<Vec<_>>();
+    out.sort();
+    out
+}
+
+fn render_derived(derived: &DerivedFacts) -> Vec<String> {
+    let mut out = Vec::new();
+    for (pred, tuples) in &derived.facts {
+        for tuple in tuples {
+            let args = tuple
+                .iter()
+                .map(value_to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            out.push(format!("{}({})", pred, args));
+        }
+    }
+    out.sort();
+    out
+}
+
+fn render_missing_goals(rhs: &Formula, derived: &DerivedFacts) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    collect_missing_goals(rhs, derived, &mut out);
+    out.into_iter().collect()
+}
+
+fn collect_missing_goals(formula: &Formula, derived: &DerivedFacts, out: &mut BTreeSet<String>) {
+    match formula {
+        Formula::True => {}
+        Formula::Atom(atom) => {
+            let Some(tuple) = atom
+                .terms
+                .iter()
+                .map(logic_term_to_const_value)
+                .collect::<Option<Vec<_>>>()
+            else {
+                out.insert(format!("{}(non-ground)", atom.pred));
+                return;
+            };
+            let exists = derived
+                .facts
+                .get(&atom.pred)
+                .map(|set| set.contains(&tuple))
+                .unwrap_or(false);
+            if !exists {
+                let args = tuple
+                    .iter()
+                    .map(value_to_string)
+                    .collect::<Vec<_>>()
+                    .join(",");
+                out.insert(format!("{}({})", atom.pred, args));
+            }
+        }
+        Formula::And(items) => {
+            for item in items {
+                collect_missing_goals(item, derived, out);
+            }
+        }
+        Formula::Not(inner) => {
+            if eval_formula(inner, derived) {
+                out.insert(format!("not {}", formula_to_string(inner)));
+            }
+        }
+    }
+}
+
+fn value_to_string(v: &Value) -> String {
+    match v {
+        Value::Symbol(s) => s.clone(),
+        Value::Int(i) => i.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Adt { ctor, fields } => {
+            let mut s = format!("({ctor}");
+            for f in fields {
+                s.push(' ');
+                s.push_str(&value_to_string(f));
+            }
+            s.push(')');
+            s
+        }
+    }
+}
+
+fn logic_term_to_string(t: &LogicTerm) -> String {
+    match t {
+        LogicTerm::Var(v) => v.clone(),
+        LogicTerm::Symbol(s) => s.clone(),
+        LogicTerm::Int(i) => i.to_string(),
+        LogicTerm::Bool(b) => b.to_string(),
+        LogicTerm::Ctor { name, args } => {
+            let mut s = format!("({name}");
+            for arg in args {
+                s.push(' ');
+                s.push_str(&logic_term_to_string(arg));
+            }
+            s.push(')');
+            s
+        }
+    }
+}

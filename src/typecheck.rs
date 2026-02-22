@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Defn, Expr, Program};
+use crate::ast::{Defn, Expr, MatchArm, Pattern, Program};
 use crate::diagnostics::Diagnostic;
 use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
 use crate::name_resolve::resolve_program;
@@ -21,9 +21,17 @@ struct FunctionSig {
 }
 
 #[derive(Debug, Clone)]
+struct ConstructorSig {
+    fields: Vec<Type>,
+    ret: Type,
+}
+
+#[derive(Debug, Clone)]
 struct TypeContext {
     relation_sigs: HashMap<String, Vec<Type>>,
     function_sigs: HashMap<String, FunctionSig>,
+    constructor_sigs: HashMap<String, ConstructorSig>,
+    data_constructors: HashMap<String, Vec<String>>,
     kb_template: KnowledgeBase,
 }
 
@@ -38,14 +46,26 @@ pub fn check_program(program: &Program) -> Result<TypeReport, Vec<Diagnostic>> {
         return Err(errors);
     }
 
+    let mut totality_errors = check_totality(program);
+    if !totality_errors.is_empty() {
+        errors.append(&mut totality_errors);
+        return Err(errors);
+    }
+
     let kb = KnowledgeBase::from_program(program)?;
     let _ = solve_facts(&kb)?;
 
-    let relation_sigs = build_relation_sigs(program);
-    let function_sigs = build_function_sigs(program);
+    let data_names: HashSet<String> = program.data_decls.iter().map(|d| d.name.clone()).collect();
+    let relation_sigs = build_relation_sigs(program, &data_names);
+    let function_sigs = build_function_sigs(program, &data_names);
+    let constructor_sigs = build_constructor_sigs(program, &data_names);
+    let data_constructors = build_data_constructor_map(program);
+
     let ctx = TypeContext {
         relation_sigs,
         function_sigs,
+        constructor_sigs,
+        data_constructors,
         kb_template: kb,
     };
 
@@ -65,30 +85,185 @@ pub fn check_program(program: &Program) -> Result<TypeReport, Vec<Diagnostic>> {
     }
 }
 
-fn build_relation_sigs(program: &Program) -> HashMap<String, Vec<Type>> {
+fn check_totality(program: &Program) -> Vec<Diagnostic> {
+    let function_names: HashSet<String> = program.defns.iter().map(|d| d.name.clone()).collect();
+    let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
+
+    for defn in &program.defns {
+        let mut called = HashSet::new();
+        collect_function_calls(&defn.body, &function_names, &mut called);
+        calls.insert(defn.name.clone(), called);
+    }
+
+    let mut errors = Vec::new();
+    let mut temp = HashSet::new();
+    let mut perm = HashSet::new();
+    let span_map: HashMap<String, _> = program
+        .defns
+        .iter()
+        .map(|d| (d.name.clone(), d.span.clone()))
+        .collect();
+
+    for defn in &program.defns {
+        let mut stack = Vec::new();
+        detect_cycle(
+            &defn.name,
+            &calls,
+            &mut temp,
+            &mut perm,
+            &mut stack,
+            &mut errors,
+            &span_map,
+        );
+    }
+
+    errors
+}
+
+fn detect_cycle(
+    name: &str,
+    calls: &HashMap<String, HashSet<String>>,
+    temp: &mut HashSet<String>,
+    perm: &mut HashSet<String>,
+    stack: &mut Vec<String>,
+    errors: &mut Vec<Diagnostic>,
+    span_map: &HashMap<String, crate::diagnostics::Span>,
+) {
+    if perm.contains(name) {
+        return;
+    }
+    if temp.contains(name) {
+        let span = span_map.get(name).cloned();
+        errors.push(Diagnostic::new(
+            "E-TOTAL",
+            format!("recursive function is not allowed: {name}"),
+            span,
+        ));
+        return;
+    }
+
+    temp.insert(name.to_string());
+    stack.push(name.to_string());
+    if let Some(nexts) = calls.get(name) {
+        for next in nexts {
+            detect_cycle(next, calls, temp, perm, stack, errors, span_map);
+        }
+    }
+    stack.pop();
+    temp.remove(name);
+    perm.insert(name.to_string());
+}
+
+fn collect_function_calls(
+    expr: &Expr,
+    function_names: &HashSet<String>,
+    out: &mut HashSet<String>,
+) {
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => {}
+        Expr::Call { name, args, .. } => {
+            if function_names.contains(name) {
+                out.insert(name.clone());
+            }
+            for arg in args {
+                collect_function_calls(arg, function_names, out);
+            }
+        }
+        Expr::Let { bindings, body, .. } => {
+            for (_, bexpr, _) in bindings {
+                collect_function_calls(bexpr, function_names, out);
+            }
+            collect_function_calls(body, function_names, out);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_function_calls(cond, function_names, out);
+            collect_function_calls(then_branch, function_names, out);
+            collect_function_calls(else_branch, function_names, out);
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_function_calls(scrutinee, function_names, out);
+            for arm in arms {
+                collect_function_calls(&arm.body, function_names, out);
+            }
+        }
+    }
+}
+
+fn build_relation_sigs(
+    program: &Program,
+    data_names: &HashSet<String>,
+) -> HashMap<String, Vec<Type>> {
     let mut map = HashMap::new();
     for rel in &program.relations {
         map.insert(
             rel.name.clone(),
             rel.arg_sorts
                 .iter()
-                .map(|s| sort_to_type(s))
+                .map(|s| type_from_name(s, data_names))
                 .collect::<Vec<_>>(),
         );
     }
     map
 }
 
-fn build_function_sigs(program: &Program) -> HashMap<String, FunctionSig> {
+fn build_function_sigs(
+    program: &Program,
+    data_names: &HashSet<String>,
+) -> HashMap<String, FunctionSig> {
     let mut map = HashMap::new();
     for f in &program.defns {
         map.insert(
             f.name.clone(),
             FunctionSig {
-                params: f.params.iter().map(|p| p.ty.clone()).collect(),
-                ret: f.ret_type.clone(),
+                params: f
+                    .params
+                    .iter()
+                    .map(|p| canonicalize_type(&p.ty, data_names))
+                    .collect(),
+                ret: canonicalize_type(&f.ret_type, data_names),
                 param_names: f.params.iter().map(|p| p.name.clone()).collect(),
             },
+        );
+    }
+    map
+}
+
+fn build_constructor_sigs(
+    program: &Program,
+    data_names: &HashSet<String>,
+) -> HashMap<String, ConstructorSig> {
+    let mut map = HashMap::new();
+    for data in &program.data_decls {
+        for ctor in &data.constructors {
+            map.insert(
+                ctor.name.clone(),
+                ConstructorSig {
+                    fields: ctor
+                        .fields
+                        .iter()
+                        .map(|ty| canonicalize_type(ty, data_names))
+                        .collect(),
+                    ret: Type::Adt(data.name.clone()),
+                },
+            );
+        }
+    }
+    map
+}
+
+fn build_data_constructor_map(program: &Program) -> HashMap<String, Vec<String>> {
+    let mut map = HashMap::new();
+    for data in &program.data_decls {
+        map.insert(
+            data.name.clone(),
+            data.constructors.iter().map(|c| c.name.clone()).collect(),
         );
     }
     map
@@ -97,11 +272,12 @@ fn build_function_sigs(program: &Program) -> HashMap<String, FunctionSig> {
 fn check_defn(defn: &Defn, ctx: &TypeContext) -> Result<(), Vec<Diagnostic>> {
     let mut env = HashMap::new();
     for p in &defn.params {
-        env.insert(p.name.clone(), p.ty.clone());
+        env.insert(p.name.clone(), canonicalize_type_for_ctx(&p.ty, ctx));
     }
 
     let actual = infer_expr(&defn.body, &env, ctx)?;
-    match is_subtype(&actual, &defn.ret_type, ctx) {
+    let expected = canonicalize_type_for_ctx(&defn.ret_type, ctx);
+    match is_subtype(&actual, &expected, ctx) {
         Ok(()) => Ok(()),
         Err(e) => Err(vec![e]),
     }
@@ -165,6 +341,11 @@ fn infer_expr(
                 )])
             }
         }
+        Expr::Match {
+            scrutinee,
+            arms,
+            span,
+        } => infer_match_expr(scrutinee, arms, span, env, ctx),
         Expr::Call { name, args, span } => {
             if let Some(sig) = ctx.function_sigs.get(name) {
                 if sig.params.len() != args.len() {
@@ -190,12 +371,36 @@ fn infer_expr(
                         arg.span(),
                         "function argument type mismatch",
                     )?;
-                    if let Some(term) = expr_to_logic_term(arg) {
+                    if let Some(term) = expr_to_logic_term(arg, ctx) {
                         substitution.insert(sig.param_names[idx].clone(), term);
                     }
                 }
 
                 Ok(substitute_type(&sig.ret, &substitution))
+            } else if let Some(sig) = ctx.constructor_sigs.get(name) {
+                if sig.fields.len() != args.len() {
+                    return Err(vec![Diagnostic::new(
+                        "E-TYPE",
+                        format!(
+                            "constructor {} arity mismatch: expected {}, got {}",
+                            name,
+                            sig.fields.len(),
+                            args.len()
+                        ),
+                        Some(span.clone()),
+                    )]);
+                }
+                for (arg, expected) in args.iter().zip(sig.fields.iter()) {
+                    let actual = infer_expr(arg, env, ctx)?;
+                    ensure_subtype(
+                        &actual,
+                        expected,
+                        ctx,
+                        arg.span(),
+                        "constructor argument type mismatch",
+                    )?;
+                }
+                Ok(sig.ret.clone())
             } else if let Some(rel_sig) = ctx.relation_sigs.get(name) {
                 if rel_sig.len() != args.len() {
                     return Err(vec![Diagnostic::new(
@@ -220,10 +425,10 @@ fn infer_expr(
                         arg.span(),
                         "relation argument type mismatch",
                     )?;
-                    let Some(term) = expr_to_logic_term(arg) else {
+                    let Some(term) = expr_to_logic_term(arg, ctx) else {
                         return Err(vec![Diagnostic::new(
                             "E-TYPE",
-                            "relation argument must be variable or literal",
+                            "relation argument must be variable/literal/constructor",
                             Some(arg.span().clone()),
                         )]);
                     };
@@ -241,11 +446,222 @@ fn infer_expr(
             } else {
                 Err(vec![Diagnostic::new(
                     "E-TYPE",
-                    format!("unknown function or relation: {name}"),
+                    format!("unknown function or relation or constructor: {name}"),
                     Some(span.clone()),
                 )])
             }
         }
+    }
+}
+
+fn infer_match_expr(
+    scrutinee: &Expr,
+    arms: &[MatchArm],
+    span: &crate::diagnostics::Span,
+    env: &HashMap<String, Type>,
+    ctx: &TypeContext,
+) -> Result<Type, Vec<Diagnostic>> {
+    let scrutinee_ty = infer_expr(scrutinee, env, ctx)?;
+    let mut branch_ty: Option<Type> = None;
+
+    let mut errors = Vec::new();
+    let mut covered_all = false;
+    let mut covered_bool = HashSet::new();
+    let mut covered_ctor = HashSet::new();
+
+    for arm in arms {
+        if covered_all {
+            errors.push(Diagnostic::new(
+                "E-MATCH",
+                "unreachable match arm",
+                Some(arm.span.clone()),
+            ));
+            continue;
+        }
+
+        let mut arm_env = env.clone();
+        let arm_key = bind_pattern(&arm.pattern, &scrutinee_ty, &mut arm_env, ctx)?;
+
+        match &arm_key {
+            PatternKey::Any => {
+                covered_all = true;
+            }
+            PatternKey::Bool(v) => {
+                if covered_bool.contains(v) {
+                    errors.push(Diagnostic::new(
+                        "E-MATCH",
+                        "unreachable duplicate boolean pattern",
+                        Some(arm.span.clone()),
+                    ));
+                }
+                covered_bool.insert(*v);
+            }
+            PatternKey::Ctor(name) => {
+                if covered_ctor.contains(name) {
+                    errors.push(Diagnostic::new(
+                        "E-MATCH",
+                        format!("unreachable duplicate constructor pattern: {name}"),
+                        Some(arm.span.clone()),
+                    ));
+                }
+                covered_ctor.insert(name.clone());
+            }
+            PatternKey::Other => {}
+        }
+
+        let ty = infer_expr(&arm.body, &arm_env, ctx)?;
+        if let Some(prev) = &branch_ty {
+            if is_subtype(&ty, prev, ctx).is_ok() {
+            } else if is_subtype(prev, &ty, ctx).is_ok() {
+                branch_ty = Some(ty);
+            } else {
+                errors.push(Diagnostic::new(
+                    "E-MATCH",
+                    "match arms have incompatible result types",
+                    Some(arm.span.clone()),
+                ));
+            }
+        } else {
+            branch_ty = Some(ty);
+        }
+    }
+
+    if !is_exhaustive(
+        &scrutinee_ty,
+        covered_all,
+        &covered_bool,
+        &covered_ctor,
+        ctx,
+    ) {
+        errors.push(Diagnostic::new(
+            "E-MATCH",
+            "non-exhaustive match",
+            Some(span.clone()),
+        ));
+    }
+
+    if errors.is_empty() {
+        Ok(branch_ty.unwrap_or(Type::Bool))
+    } else {
+        Err(errors)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PatternKey {
+    Any,
+    Bool(bool),
+    Ctor(String),
+    Other,
+}
+
+fn bind_pattern(
+    pattern: &Pattern,
+    expected: &Type,
+    env: &mut HashMap<String, Type>,
+    ctx: &TypeContext,
+) -> Result<PatternKey, Vec<Diagnostic>> {
+    match pattern {
+        Pattern::Wildcard { .. } => Ok(PatternKey::Any),
+        Pattern::Var { name, .. } => {
+            if let Some(prev) = env.get(name)
+                && is_subtype(expected, prev, ctx).is_err()
+            {
+                return Err(vec![Diagnostic::new(
+                    "E-MATCH",
+                    format!("pattern variable type mismatch: {name}"),
+                    Some(pattern.span().clone()),
+                )]);
+            }
+            env.insert(name.clone(), expected.clone());
+            Ok(PatternKey::Any)
+        }
+        Pattern::Bool { value, .. } => {
+            ensure_subtype(
+                expected,
+                &Type::Bool,
+                ctx,
+                pattern.span(),
+                "pattern expects Bool",
+            )?;
+            Ok(PatternKey::Bool(*value))
+        }
+        Pattern::Int { .. } => {
+            ensure_subtype(
+                expected,
+                &Type::Int,
+                ctx,
+                pattern.span(),
+                "pattern expects Int",
+            )?;
+            Ok(PatternKey::Other)
+        }
+        Pattern::Symbol { .. } => {
+            ensure_subtype(
+                expected,
+                &Type::Symbol,
+                ctx,
+                pattern.span(),
+                "pattern expects Symbol",
+            )?;
+            Ok(PatternKey::Other)
+        }
+        Pattern::Ctor { name, args, .. } => {
+            let Some(sig) = ctx.constructor_sigs.get(name) else {
+                return Err(vec![Diagnostic::new(
+                    "E-MATCH",
+                    format!("unknown constructor in pattern: {name}"),
+                    Some(pattern.span().clone()),
+                )]);
+            };
+            if sig.fields.len() != args.len() {
+                return Err(vec![Diagnostic::new(
+                    "E-MATCH",
+                    format!(
+                        "constructor {} arity mismatch in pattern: expected {}, got {}",
+                        name,
+                        sig.fields.len(),
+                        args.len()
+                    ),
+                    Some(pattern.span().clone()),
+                )]);
+            }
+            ensure_subtype(
+                &sig.ret,
+                expected,
+                ctx,
+                pattern.span(),
+                "pattern constructor type mismatch",
+            )?;
+
+            for (child, child_expected) in args.iter().zip(sig.fields.iter()) {
+                let _ = bind_pattern(child, child_expected, env, ctx)?;
+            }
+            Ok(PatternKey::Ctor(name.clone()))
+        }
+    }
+}
+
+fn is_exhaustive(
+    scrutinee_ty: &Type,
+    covered_all: bool,
+    covered_bool: &HashSet<bool>,
+    covered_ctor: &HashSet<String>,
+    ctx: &TypeContext,
+) -> bool {
+    if covered_all {
+        return true;
+    }
+
+    match scrutinee_ty {
+        Type::Bool => covered_bool.contains(&true) && covered_bool.contains(&false),
+        Type::Adt(name) => {
+            let Some(ctors) = ctx.data_constructors.get(name) else {
+                return false;
+            };
+            ctors.iter().all(|c| covered_ctor.contains(c))
+        }
+        _ => false,
     }
 }
 
@@ -296,18 +712,15 @@ fn is_subtype(actual: &Type, expected: &Type, ctx: &TypeContext) -> Result<(), D
             }
         }
         (Type::Refine { base, .. }, _) => is_subtype(base, expected, ctx),
-        (Type::Bool, Type::Bool)
-        | (Type::Int, Type::Int)
-        | (Type::Symbol, Type::Symbol)
-        | (Type::Symbol, Type::Domain(_))
-        | (Type::Domain(_), Type::Symbol) => Ok(()),
+        (Type::Bool, Type::Bool) | (Type::Int, Type::Int) | (Type::Symbol, Type::Symbol) => Ok(()),
         (Type::Domain(a), Type::Domain(b)) if a == b => Ok(()),
+        (Type::Adt(a), Type::Adt(b)) if a == b => Ok(()),
         (Type::Fun(a_args, a_ret), Type::Fun(b_args, b_ret)) => {
             if a_args.len() != b_args.len() {
                 return Err(Diagnostic::new("E-TYPE", "function arity mismatch", None));
             }
             for (a, b) in a_args.iter().zip(b_args.iter()) {
-                if a != b {
+                if is_subtype(a, b, ctx).is_err() || is_subtype(b, a, ctx).is_err() {
                     return Err(Diagnostic::new(
                         "E-TYPE",
                         "function argument type mismatch",
@@ -379,15 +792,29 @@ fn atom_to_ground_tuple(
 ) -> Option<(String, Vec<Value>)> {
     let mut tuple = Vec::new();
     for term in &atom.terms {
-        let v = match term {
-            LogicTerm::Var(name) => vars.get(name)?.clone(),
-            LogicTerm::Symbol(s) => Value::Symbol(s.clone()),
-            LogicTerm::Int(i) => Value::Int(*i),
-            LogicTerm::Bool(b) => Value::Bool(*b),
-        };
+        let v = logic_term_to_value(term, vars)?;
         tuple.push(v);
     }
     Some((atom.pred.clone(), tuple))
+}
+
+fn logic_term_to_value(term: &LogicTerm, vars: &HashMap<String, Value>) -> Option<Value> {
+    match term {
+        LogicTerm::Var(name) => vars.get(name).cloned(),
+        LogicTerm::Symbol(s) => Some(Value::Symbol(s.clone())),
+        LogicTerm::Int(i) => Some(Value::Int(*i)),
+        LogicTerm::Bool(b) => Some(Value::Bool(*b)),
+        LogicTerm::Ctor { name, args } => {
+            let mut fields = Vec::new();
+            for arg in args {
+                fields.push(logic_term_to_value(arg, vars)?);
+            }
+            Some(Value::Adt {
+                ctor: name.clone(),
+                fields,
+            })
+        }
+    }
 }
 
 fn positive_atoms(formula: &Formula) -> Vec<Atom> {
@@ -424,9 +851,7 @@ fn collect_vars_inner(formula: &Formula, out: &mut HashSet<String>) {
         Formula::True => {}
         Formula::Atom(atom) => {
             for t in &atom.terms {
-                if let LogicTerm::Var(v) = t {
-                    out.insert(v.clone());
-                }
+                collect_vars_in_term(t, out);
             }
         }
         Formula::And(items) => {
@@ -438,6 +863,20 @@ fn collect_vars_inner(formula: &Formula, out: &mut HashSet<String>) {
     }
 }
 
+fn collect_vars_in_term(term: &LogicTerm, out: &mut HashSet<String>) {
+    match term {
+        LogicTerm::Var(v) => {
+            out.insert(v.clone());
+        }
+        LogicTerm::Ctor { args, .. } => {
+            for arg in args {
+                collect_vars_in_term(arg, out);
+            }
+        }
+        LogicTerm::Symbol(_) | LogicTerm::Int(_) | LogicTerm::Bool(_) => {}
+    }
+}
+
 fn rename_formula_var(formula: &Formula, from: &str, to: &str) -> Formula {
     match formula {
         Formula::True => Formula::True,
@@ -446,10 +885,7 @@ fn rename_formula_var(formula: &Formula, from: &str, to: &str) -> Formula {
             terms: atom
                 .terms
                 .iter()
-                .map(|t| match t {
-                    LogicTerm::Var(v) if v == from => LogicTerm::Var(to.to_string()),
-                    other => other.clone(),
-                })
+                .map(|t| rename_term_var(t, from, to))
                 .collect(),
         }),
         Formula::And(items) => Formula::And(
@@ -462,12 +898,24 @@ fn rename_formula_var(formula: &Formula, from: &str, to: &str) -> Formula {
     }
 }
 
+fn rename_term_var(term: &LogicTerm, from: &str, to: &str) -> LogicTerm {
+    match term {
+        LogicTerm::Var(v) if v == from => LogicTerm::Var(to.to_string()),
+        LogicTerm::Ctor { name, args } => LogicTerm::Ctor {
+            name: name.clone(),
+            args: args.iter().map(|t| rename_term_var(t, from, to)).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
 fn substitute_type(ty: &Type, subst: &HashMap<String, LogicTerm>) -> Type {
     match ty {
         Type::Bool => Type::Bool,
         Type::Int => Type::Int,
         Type::Symbol => Type::Symbol,
         Type::Domain(s) => Type::Domain(s.clone()),
+        Type::Adt(s) => Type::Adt(s.clone()),
         Type::Fun(args, ret) => Type::Fun(
             args.iter().map(|a| substitute_type(a, subst)).collect(),
             Box::new(substitute_type(ret, subst)),
@@ -492,13 +940,7 @@ fn substitute_formula(formula: &Formula, subst: &HashMap<String, LogicTerm>) -> 
             terms: atom
                 .terms
                 .iter()
-                .map(|t| match t {
-                    LogicTerm::Var(v) => subst
-                        .get(v)
-                        .cloned()
-                        .unwrap_or_else(|| LogicTerm::Var(v.clone())),
-                    other => other.clone(),
-                })
+                .map(|t| substitute_term(t, subst))
                 .collect(),
         }),
         Formula::And(items) => {
@@ -508,21 +950,76 @@ fn substitute_formula(formula: &Formula, subst: &HashMap<String, LogicTerm>) -> 
     }
 }
 
-fn expr_to_logic_term(expr: &Expr) -> Option<LogicTerm> {
+fn substitute_term(term: &LogicTerm, subst: &HashMap<String, LogicTerm>) -> LogicTerm {
+    match term {
+        LogicTerm::Var(v) => subst
+            .get(v)
+            .cloned()
+            .unwrap_or_else(|| LogicTerm::Var(v.clone())),
+        LogicTerm::Ctor { name, args } => LogicTerm::Ctor {
+            name: name.clone(),
+            args: args.iter().map(|t| substitute_term(t, subst)).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn expr_to_logic_term(expr: &Expr, ctx: &TypeContext) -> Option<LogicTerm> {
     match expr {
         Expr::Var { name, .. } => Some(LogicTerm::Var(name.clone())),
         Expr::Symbol { value, .. } => Some(LogicTerm::Symbol(value.clone())),
         Expr::Int { value, .. } => Some(LogicTerm::Int(*value)),
         Expr::Bool { value, .. } => Some(LogicTerm::Bool(*value)),
-        Expr::Call { .. } | Expr::Let { .. } | Expr::If { .. } => None,
+        Expr::Call { name, args, .. } => {
+            if !ctx.constructor_sigs.contains_key(name) {
+                return None;
+            }
+            let mut terms = Vec::new();
+            for arg in args {
+                terms.push(expr_to_logic_term(arg, ctx)?);
+            }
+            Some(LogicTerm::Ctor {
+                name: name.clone(),
+                args: terms,
+            })
+        }
+        Expr::Let { .. } | Expr::If { .. } | Expr::Match { .. } => None,
     }
 }
 
-fn sort_to_type(sort: &str) -> Type {
-    match sort {
+fn canonicalize_type_for_ctx(ty: &Type, ctx: &TypeContext) -> Type {
+    let data_names: HashSet<String> = ctx.data_constructors.keys().cloned().collect();
+    canonicalize_type(ty, &data_names)
+}
+
+fn canonicalize_type(ty: &Type, data_names: &HashSet<String>) -> Type {
+    match ty {
+        Type::Domain(name) if data_names.contains(name) => Type::Adt(name.clone()),
+        Type::Domain(name) => Type::Domain(name.clone()),
+        Type::Adt(name) => Type::Adt(name.clone()),
+        Type::Bool => Type::Bool,
+        Type::Int => Type::Int,
+        Type::Symbol => Type::Symbol,
+        Type::Fun(args, ret) => Type::Fun(
+            args.iter()
+                .map(|a| canonicalize_type(a, data_names))
+                .collect(),
+            Box::new(canonicalize_type(ret, data_names)),
+        ),
+        Type::Refine { var, base, formula } => Type::Refine {
+            var: var.clone(),
+            base: Box::new(canonicalize_type(base, data_names)),
+            formula: formula.clone(),
+        },
+    }
+}
+
+fn type_from_name(name: &str, data_names: &HashSet<String>) -> Type {
+    match name {
         "Bool" => Type::Bool,
         "Int" => Type::Int,
         "Symbol" => Type::Symbol,
+        n if data_names.contains(n) => Type::Adt(n.to_string()),
         other => Type::Domain(other.to_string()),
     }
 }

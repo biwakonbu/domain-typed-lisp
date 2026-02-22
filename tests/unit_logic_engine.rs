@@ -6,14 +6,14 @@ fn logic_derives_expected_facts() {
         (sort Subject)
         (sort Role)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation has-role (Subject Role))
         (relation resource-public (Resource))
         (relation can-access (Subject Resource Action))
 
         (fact has-role alice admin)
         (fact resource-public doc1)
-        (rule (can-access ?u ?r read)
+        (rule (can-access ?u ?r (read))
               (and (has-role ?u admin)
                    (resource-public ?r)))
     "#;
@@ -21,7 +21,11 @@ fn logic_derives_expected_facts() {
     let program = parse_program(src).expect("parse should succeed");
     let kb = KnowledgeBase::from_program(&program).expect("kb should build");
     let derived = solve_facts(&kb).expect("solve should succeed");
-    assert!(derived.contains("can-access", &["alice", "doc1", "read"]));
+    assert!(derived.relation_facts("can-access").contains(&vec![
+        "alice".to_string(),
+        "doc1".to_string(),
+        "(read)".to_string()
+    ]));
 }
 
 #[test]

@@ -6,6 +6,7 @@ pub enum Type {
     Int,
     Symbol,
     Domain(String),
+    Adt(String),
     Fun(Vec<Type>, Box<Type>),
     Refine {
         var: String,
@@ -36,6 +37,7 @@ pub enum LogicTerm {
     Symbol(String),
     Int(i64),
     Bool(bool),
+    Ctor { name: String, args: Vec<LogicTerm> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -68,6 +70,13 @@ impl fmt::Display for LogicTerm {
             LogicTerm::Symbol(s) => write!(f, "{s}"),
             LogicTerm::Int(i) => write!(f, "{i}"),
             LogicTerm::Bool(b) => write!(f, "{b}"),
+            LogicTerm::Ctor { name, args } => {
+                write!(f, "({name}")?;
+                for arg in args {
+                    write!(f, " {arg}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

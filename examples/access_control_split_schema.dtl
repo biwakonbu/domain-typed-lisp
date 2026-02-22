@@ -1,7 +1,7 @@
 (sort Subject)
 (sort Role)
 (sort Resource)
-(sort Action)
+(data Action (read))
 
 (relation has-role (Subject Role))
 (relation resource-public (Resource))

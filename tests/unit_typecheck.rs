@@ -5,12 +5,12 @@ fn typecheck_accepts_refinement_return() {
     let src = r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
 
         (defn can-read ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
-          (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
+          (can-access u r (read)))
     "#;
 
     let program = parse_program(src).expect("parse should succeed");
@@ -23,7 +23,7 @@ fn typecheck_rejects_argument_type_mismatch() {
     let src = r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
 
         (defn expects-subject ((u Subject)) Bool true)
@@ -40,12 +40,12 @@ fn typecheck_rejects_unprovable_entailment() {
     let src = r#"
         (sort Subject)
         (sort Resource)
-        (sort Action)
+        (data Action (read))
         (relation can-access (Subject Resource Action))
         (relation has-role (Subject Symbol))
 
         (defn broken ((u Subject) (r Resource))
-          (Refine b Bool (can-access u r read))
+          (Refine b Bool (can-access u r (read)))
           (has-role u admin))
     "#;
 

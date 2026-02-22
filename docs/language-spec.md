@@ -1,105 +1,141 @@
-# 言語仕様（MVP）
+# 言語仕様（v0.2）
 
 ## 0. 設計原則
-- 本言語は汎用計算を目的としない。
-- 計算は、型検査と論理導出（固定点評価）を通じてドメイン制約の正しさを検証するために用いる。
+- 本言語はドメイン整合性検証専用の DSL であり、汎用計算系ではない。
+- 言語内計算は純粋（副作用なし）・非破壊であり、外部状態に依存しない。
+- 関数は全域性を要求する。v0.2 では再帰（自己再帰・相互再帰）を禁止する。
 
 ## 1. 形式
 - S 式のみを受け付ける。
-- 1 ファイルに複数トップレベルフォームを並べる。
-- `import` により複数ファイルを連結できる。
+- 1 ファイルに複数トップレベルフォームを記述できる。
+- `import` で複数ファイルを連結し、単一 `Program` として検査する。
 
-## 2. トップレベルフォーム
+## 2. CLI
+- `dtl check <FILE>... [--format text|json]`
+  - 構文 / 名前解決 / 層化否定 / 型検査 / 全域性 / `match` 網羅性を検査する。
+- `dtl prove <FILE>... [--format text|json] [--out DIR]`
+  - 有限モデル上で証明義務を全探索し、証跡を生成する。
+- `dtl doc <FILE>... --out DIR [--format markdown|json]`
+  - 証明がすべて成功した場合のみドキュメント束を生成する。
 
-### 2.1 import
+## 3. トップレベルフォーム
+
+### 3.1 import
 ```lisp
 (import "relative/path.dtl")
 ```
-- パスは import 元ファイルからの相対解決。
-- 循環 import は `E-IMPORT`。
 
-### 2.2 sort
+### 3.2 sort
 ```lisp
 (sort Subject)
 ```
 
-### 2.3 relation
+### 3.3 data（単相・非再帰）
 ```lisp
-(relation has-role (Subject Role))
+(data Action
+  (read)
+  (write))
 ```
 
-### 2.4 fact
+### 3.4 relation
 ```lisp
-(fact has-role alice admin)
+(relation can-access (Subject Resource Action))
 ```
 
-### 2.5 rule
+### 3.5 fact
 ```lisp
-(rule (can-access ?u ?r read)
+(fact can-access alice doc1 (read))
+```
+
+### 3.6 rule
+```lisp
+(rule (can-access ?u ?r (read))
       (and (has-role ?u admin)
            (resource-public ?r)))
 ```
-- 変数は `?` プレフィックス。
-- 否定は `(not (pred ...))`。
-- 層化否定のみ許可。
 
-### 2.6 defn
+### 3.7 assert
 ```lisp
-(defn can-read ((u Subject) (r Resource))
-  (Refine b Bool (can-access u r read))
-  (can-access u r read))
+(assert policy-consistency ((u Subject))
+  (not (and (allowed u)
+            (not (allowed u)))))
 ```
 
-## 3. 型
+### 3.8 universe（有限モデル境界）
+```lisp
+(universe Subject ((alice) (bob)))
+```
 
+### 3.9 defn
+```lisp
+(defn can-read ((u Subject) (r Resource))
+  (Refine b Bool (can-access u r (read)))
+  (can-access u r (read)))
+```
+
+## 4. 式
 ```text
-Type = Bool | Int | Symbol | Domain(SortId)
+Expr = Var | Symbol | Int | Bool
+     | (name expr*)
+     | (let ((x e)...) body)
+     | (if cond then else)
+     | (match expr (pattern expr)+)
+```
+
+`match` パターン:
+```text
+Pattern = _ | var | true | false | int | (Ctor pattern*)
+```
+
+## 5. 型
+```text
+Type = Bool | Int | Symbol
+     | Domain(SortId)
+     | Adt(DataId)
      | Fun(Vec<Type>, Type)
      | Refine { var, base, formula }
 ```
 
-Refinement 型:
-```text
-{x:T | P(x)}
-```
-DSL 表現:
-```lisp
-(Refine x T <formula>)
-```
-
-## 4. 論理式
-
+## 6. 論理式
 ```text
 Formula = true
         | (pred term*)
         | (and formula+)
         | (not formula)
+
+term = var | symbol | int | bool | (Ctor term*)
 ```
 
-## 5. 型規則（要点）
-- 関数境界（引数/戻り値）は注釈必須。
-- `let` 束縛は推論可。
-- 関数適用で引数型を検査する。
-- 戻り値は宣言型への部分型関係を要求。
-- `Refine A <: Refine B` は基底型整合 + 含意 `A => B` で判定。
+## 7. 検証意味論
+- `check`
+  - 関数再帰を禁止（`E-TOTAL`）。
+  - `match` は網羅必須・到達不能分岐検出（`E-MATCH`）。
+  - `Symbol` と `Domain` の暗黙互換は行わない。
+- `prove`
+  - 証明義務:
+    - `defn` の戻り値 Refinement 含意
+    - `assert` 義務
+  - `universe` で宣言された有限集合に対して全代入を列挙し、固定点評価で成立判定する。
+  - 失敗時は最小前提セット（包含最小）を反例として出力する。
 
-## 6. 含意判定
-- 閉世界仮定（CWA）を採用。
-- Datalog 固定点評価（半ナイーブ）で導出事実を計算。
-- 含意不能は型エラー。
+## 8. 生成物
+- `prove --out DIR`:
+  - `proof-trace.json`（`schema_version = "1.0.0"`）
+- `doc --out DIR`:
+  - `spec.md`
+  - `proof-trace.json`
+  - `doc-index.json`
+- 未証明義務が 1 つでもある場合、`doc` は失敗する。
 
-## 7. エラー分類
+## 9. エラー分類
 - `E-IO`: 入出力エラー
-- `E-IMPORT`: import 解決エラー（循環依存など）
+- `E-IMPORT`: import 解決エラー
 - `E-PARSE`: 構文エラー
 - `E-RESOLVE`: 名前解決エラー
 - `E-STRATIFY`: 層化違反
 - `E-TYPE`: 型エラー
 - `E-ENTAIL`: 含意失敗
-
-## 8. CLI 出力形式
-- 既定は人間可読なテキスト診断。
-- `dtl check <FILE>... --format json` は以下を出力する。
-  - 成功: `status="ok"` と `report`
-  - 失敗: `status="error"` と `diagnostics[]`
-- 診断には `source`（ファイルパス）が付与される場合がある。
+- `E-TOTAL`: 全域性違反（再帰禁止違反）
+- `E-DATA`: `data` 宣言違反（重複・再帰・constructor 不整合）
+- `E-MATCH`: `match` 検査違反（非網羅・到達不能・型不整合）
+- `E-PROVE`: 証明失敗 / universe 不備 / 反例検出

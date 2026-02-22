@@ -1,5 +1,5 @@
-use std::time::Duration;
 use std::hint::black_box;
+use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use dtl::{KnowledgeBase, parse_program, solve_facts};
