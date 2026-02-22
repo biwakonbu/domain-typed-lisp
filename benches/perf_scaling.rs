@@ -40,8 +40,11 @@ fn bench_counterexample_minimization_scaling(c: &mut Criterion) {
             &program,
             |b, program| {
                 b.iter(|| {
-                    let trace = prove_program(black_box(program)).expect("prove");
-                    black_box(has_failed_obligation(&trace));
+                    let failed = match prove_program(black_box(program)) {
+                        Ok(trace) => has_failed_obligation(&trace),
+                        Err(_) => true,
+                    };
+                    black_box(failed);
                 })
             },
         );

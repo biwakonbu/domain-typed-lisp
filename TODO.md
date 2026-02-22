@@ -2,7 +2,7 @@
 
 最終更新: 2026-02-22
 
-残件: 2（`Technical Debt` 2 件）
+残件: 0
 
 ## P0
 - [x] `check/prove/doc` を CI 必須ジョブに反映する。
@@ -25,7 +25,7 @@
   成果物: `docs/adr/0001-import-namespace.md`
 
 ## Technical Debt
-- [ ] 複数ファイル入力時、resolve/typecheck 診断の `source` 付与を厳密化する（Span にファイル識別子導入）。
-- [ ] ベンチ自動実行を CI に組み込む。
+- [x] 複数ファイル入力時、resolve/typecheck 診断の `source` 付与を厳密化する（Span にファイル識別子導入）。
+- [x] ベンチ自動実行を CI に組み込む。
 - [x] 日本語サンプル `examples/customer_contract_ja.dtl` の `doc` 生成を E2E テストに追加する。
 - [x] Atom 正規化の仕様境界を明確化する（引用符・エスケープを含む Atom の取り扱いを言語仕様に追記し、対応テストを追加）。

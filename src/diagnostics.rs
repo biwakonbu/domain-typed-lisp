@@ -6,6 +6,7 @@ pub struct Span {
     pub end: usize,
     pub line: usize,
     pub column: usize,
+    pub file_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,11 +100,16 @@ pub fn line_col(src: &str, offset: usize) -> (usize, usize) {
 }
 
 pub fn make_span(src: &str, start: usize, end: usize) -> Span {
+    make_span_with_file(src, start, end, None)
+}
+
+pub fn make_span_with_file(src: &str, start: usize, end: usize, file_id: Option<&str>) -> Span {
     let (line, column) = line_col(src, start);
     Span {
         start,
         end,
         line,
         column,
+        file_id: file_id.map(str::to_string),
     }
 }

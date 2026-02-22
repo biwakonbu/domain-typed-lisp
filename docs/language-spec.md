@@ -28,6 +28,13 @@
 - `dtl doc <FILE>... --out DIR [--format markdown|json]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
 
+### 2.1 diagnostics（`--format json`）
+- エラー時は `status = "error"` と `diagnostics` 配列を返す。
+- 各 diagnostic の `source` は、実際に診断が発生したファイルパスを指す。
+  - 単一ファイル入力: その入力ファイル
+  - 複数ファイル入力: 当該定義を含むファイル
+  - `import` 利用時: import 先を含む実ファイル
+
 ## 3. トップレベルフォーム
 
 ### 3.1 import

@@ -162,6 +162,8 @@ cargo run -- check examples/customer_contract_ja.dtl --format json
 
 この段階で `status=error` の場合、`prove` や `doc` へ進む意味はありません。先に `diagnostics` を解消します。
 
+複数ファイル入力（`check a.dtl b.dtl`）や `import` 併用時でも、`diagnostics[].source` には実際の失敗ファイルが入ります。`source` を起点に修正対象を特定してください。
+
 ### 8.3 `prove`: 証明義務を有限モデルで検証する
 
 ```bash

@@ -56,3 +56,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: integration doc cli
         run: cargo test --test integration_prove_doc_cli cli_doc
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: benchmark smoke
+        run: |
+          cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot
+          cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot
+          cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot

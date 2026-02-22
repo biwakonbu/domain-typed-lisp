@@ -266,6 +266,128 @@ fn cli_json_output_for_failure() {
 }
 
 #[test]
+fn cli_json_output_for_multi_file_failure_has_per_file_source() {
+    let dir = tempdir().expect("tempdir");
+    let schema = dir.path().join("schema.dtl");
+    let policy = dir.path().join("policy_bad.dtl");
+    fs::write(
+        &schema,
+        r#"
+        (sort Subject)
+        (sort Resource)
+        (data Action (read))
+        (relation can-access (Subject Resource Action))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &policy,
+        r#"
+        (defn can-read ((u Subject) (r Resource))
+          Bool
+          (unknown-call u r))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&schema)
+        .arg(&policy)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-RESOLVE")
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["source"] == policy.display().to_string().as_str())
+    );
+}
+
+#[test]
+fn cli_json_output_for_imported_failure_has_imported_source() {
+    let dir = tempdir().expect("tempdir");
+    let schema = dir.path().join("schema.dtl");
+    let policy = dir.path().join("policy_bad.dtl");
+    let entry = dir.path().join("entry.dtl");
+    fs::write(
+        &schema,
+        r#"
+        (sort Subject)
+        (sort Resource)
+        (data Action (read))
+        (relation can-access (Subject Resource Action))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &policy,
+        r#"
+        (defn can-read ((u Subject) (r Resource))
+          Bool
+          (unknown-call u r))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &entry,
+        r#"
+        (import "schema.dtl")
+        (import "policy_bad.dtl")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&entry)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-RESOLVE")
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["source"] == policy.display().to_string().as_str())
+    );
+}
+
+#[test]
 fn cli_json_output_for_missing_file_has_source() {
     let missing = "/tmp/non-existent-domain-typed-lisp-json-missing-file.dtl";
     let mut cmd = cargo_bin_cmd!("dtl");

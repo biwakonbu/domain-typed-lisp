@@ -46,6 +46,16 @@ impl SExpr {
 }
 
 pub fn parse_program(src: &str) -> Result<Program, Vec<Diagnostic>> {
+    parse_program_impl(src)
+}
+
+pub fn parse_program_with_source(src: &str, source: &str) -> Result<Program, Vec<Diagnostic>> {
+    let mut program = parse_program_impl(src)?;
+    attach_source_to_program_spans(&mut program, source);
+    Ok(program)
+}
+
+fn parse_program_impl(src: &str) -> Result<Program, Vec<Diagnostic>> {
     let tokens = lex(src)?;
     let sexprs = parse_sexprs(src, &tokens)?;
     let mut program = Program::new();
@@ -70,6 +80,116 @@ pub fn parse_program(src: &str) -> Result<Program, Vec<Diagnostic>> {
         Ok(program)
     } else {
         Err(errors)
+    }
+}
+
+fn attach_source_to_program_spans(program: &mut Program, source: &str) {
+    for import in &mut program.imports {
+        attach_span_source(&mut import.span, source);
+    }
+    for sort in &mut program.sorts {
+        attach_span_source(&mut sort.span, source);
+    }
+    for data in &mut program.data_decls {
+        attach_span_source(&mut data.span, source);
+        for ctor in &mut data.constructors {
+            attach_span_source(&mut ctor.span, source);
+        }
+    }
+    for relation in &mut program.relations {
+        attach_span_source(&mut relation.span, source);
+    }
+    for fact in &mut program.facts {
+        attach_span_source(&mut fact.span, source);
+    }
+    for rule in &mut program.rules {
+        attach_span_source(&mut rule.span, source);
+    }
+    for assertion in &mut program.asserts {
+        attach_span_source(&mut assertion.span, source);
+        for param in &mut assertion.params {
+            attach_span_source(&mut param.span, source);
+        }
+    }
+    for universe in &mut program.universes {
+        attach_span_source(&mut universe.span, source);
+    }
+    for defn in &mut program.defns {
+        attach_span_source(&mut defn.span, source);
+        for param in &mut defn.params {
+            attach_span_source(&mut param.span, source);
+        }
+        attach_expr_source(&mut defn.body, source);
+    }
+}
+
+fn attach_span_source(span: &mut crate::diagnostics::Span, source: &str) {
+    span.file_id = Some(source.to_string());
+}
+
+fn attach_expr_source(expr: &mut Expr, source: &str) {
+    match expr {
+        Expr::Var { span, .. }
+        | Expr::Symbol { span, .. }
+        | Expr::Int { span, .. }
+        | Expr::Bool { span, .. }
+        | Expr::Call { span, .. }
+        | Expr::Let { span, .. }
+        | Expr::If { span, .. }
+        | Expr::Match { span, .. } => attach_span_source(span, source),
+    }
+
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => {}
+        Expr::Call { args, .. } => {
+            for arg in args {
+                attach_expr_source(arg, source);
+            }
+        }
+        Expr::Let { bindings, body, .. } => {
+            for (_, bexpr, bspan) in bindings {
+                attach_span_source(bspan, source);
+                attach_expr_source(bexpr, source);
+            }
+            attach_expr_source(body, source);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            attach_expr_source(cond, source);
+            attach_expr_source(then_branch, source);
+            attach_expr_source(else_branch, source);
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            attach_expr_source(scrutinee, source);
+            for arm in arms {
+                attach_span_source(&mut arm.span, source);
+                attach_pattern_source(&mut arm.pattern, source);
+                attach_expr_source(&mut arm.body, source);
+            }
+        }
+    }
+}
+
+fn attach_pattern_source(pattern: &mut Pattern, source: &str) {
+    match pattern {
+        Pattern::Wildcard { span }
+        | Pattern::Var { span, .. }
+        | Pattern::Symbol { span, .. }
+        | Pattern::Int { span, .. }
+        | Pattern::Bool { span, .. }
+        | Pattern::Ctor { span, .. } => attach_span_source(span, source),
+    }
+
+    if let Pattern::Ctor { args, .. } = pattern {
+        for arg in args {
+            attach_pattern_source(arg, source);
+        }
     }
 }
 

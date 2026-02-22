@@ -31,6 +31,7 @@ cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
 dtl check <FILE>... [--format text|json]
 ```
 - 構文/名前解決/層化否定/型検査/全域性/`match` を検査する。
+- `--format json` の `diagnostics[].source` は、複数ファイル入力や `import` 経由でも実際のエラー発生ファイルを指す。
 
 ### `prove`
 ```bash
@@ -51,6 +52,9 @@ dtl doc <FILE>... --out DIR [--format markdown|json]
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --bins --tests
+cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot
+cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot
+cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot
 ```
 
 ## ドキュメント

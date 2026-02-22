@@ -1,5 +1,6 @@
 use dtl::ast::Program;
 use dtl::diagnostics::{Diagnostic, line_col, make_span};
+use dtl::parse_program_with_source;
 use dtl::types::{Formula, LogicTerm, Type};
 
 #[test]
@@ -55,4 +56,14 @@ fn types_helpers_are_exercised() {
 
     let term = LogicTerm::Int(42);
     assert_eq!(term.to_string(), "42");
+}
+
+#[test]
+fn parse_program_with_source_sets_span_file_id() {
+    let src = "(sort Subject)";
+    let program = parse_program_with_source(src, "fixtures/schema.dtl").expect("parse");
+    assert_eq!(
+        program.sorts[0].span.file_id.as_deref(),
+        Some("fixtures/schema.dtl")
+    );
 }

@@ -39,6 +39,7 @@ fn solve_facts_rejects_unbound_head_variable() {
             end: 0,
             line: 1,
             column: 1,
+            file_id: None,
         },
     };
 

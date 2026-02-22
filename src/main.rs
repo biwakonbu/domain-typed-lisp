@@ -5,7 +5,7 @@ use std::{collections::HashSet, fmt::Write};
 use clap::{Parser, Subcommand, ValueEnum};
 use dtl::{
     Diagnostic, DocBundleFormat, Program, ProofTrace, Span, check_program, generate_doc_bundle,
-    has_failed_obligation, parse_program, prove_program, write_proof_trace,
+    has_failed_obligation, parse_program_with_source, prove_program, write_proof_trace,
 };
 use serde::Serialize;
 
@@ -124,7 +124,7 @@ fn run_check(files: &[PathBuf], format: OutputFormat) -> i32 {
             0
         }
         Err(diags) => {
-            let diags = attach_single_source_if_missing(diags, files);
+            let diags = attach_source_if_missing(diags, files);
             emit_error(&diags, format);
             1
         }
@@ -143,7 +143,7 @@ fn run_prove(files: &[PathBuf], format: OutputFormat, out: Option<&Path>) -> i32
     let trace = match prove_program(&program) {
         Ok(trace) => trace,
         Err(diags) => {
-            let diags = attach_single_source_if_missing(diags, files);
+            let diags = attach_source_if_missing(diags, files);
             match format {
                 OutputFormat::Text => emit_error(&diags, OutputFormat::Text),
                 OutputFormat::Json => emit_json(ProveJsonResponse {
@@ -216,7 +216,7 @@ fn run_doc(files: &[PathBuf], out: &Path, format: DocFormat) -> i32 {
     let trace = match prove_program(&program) {
         Ok(trace) => trace,
         Err(diags) => {
-            for d in attach_single_source_if_missing(diags, files) {
+            for d in attach_source_if_missing(diags, files) {
                 eprintln!("{d}");
             }
             return 1;
@@ -306,7 +306,7 @@ fn load_program_file(file: &Path, state: &mut LoadState) {
     };
 
     let source = file.display().to_string();
-    let program = match parse_program(&src) {
+    let program = match parse_program_with_source(&src, &source) {
         Ok(program) => program,
         Err(diags) => {
             state
@@ -383,16 +383,24 @@ fn merge_program(dst: &mut Program, src: Program) {
     dst.defns.extend(src.defns);
 }
 
-fn attach_single_source_if_missing(diags: Vec<Diagnostic>, files: &[PathBuf]) -> Vec<Diagnostic> {
-    if files.len() != 1 {
-        return diags;
-    }
-    let source = files[0].display().to_string();
+fn attach_source_if_missing(diags: Vec<Diagnostic>, files: &[PathBuf]) -> Vec<Diagnostic> {
+    let single_source = if files.len() == 1 {
+        Some(files[0].display().to_string())
+    } else {
+        None
+    };
+
     diags
         .into_iter()
         .map(|d| {
             if d.source().is_none() {
-                d.with_source(source.clone())
+                if let Some(file_id) = d.span.as_ref().and_then(|span| span.file_id.clone()) {
+                    d.with_source(file_id)
+                } else if let Some(source) = &single_source {
+                    d.with_source(source.clone())
+                } else {
+                    d
+                }
             } else {
                 d
             }

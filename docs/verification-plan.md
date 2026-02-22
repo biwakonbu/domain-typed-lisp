@@ -25,6 +25,9 @@
 7. `cargo test --test integration_prove_json_contract`
 8. `cargo test --test unit_prover`
 9. `cargo test --test property_logic`
+10. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
+11. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
+12. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
 1. 仕様更新（language-spec / migration）
@@ -39,3 +42,4 @@
   - `cli-check`: `integration_cli` + `e2e_examples`
   - `cli-prove`: `integration_prove_doc_cli`（prove系）+ `integration_prove_json_contract`
   - `cli-doc`: `integration_prove_doc_cli`（doc系）
+  - `bench`: `perf_scaling` の代表ケースをスモーク実行
