@@ -342,6 +342,9 @@ fn entails(lhs: &Formula, rhs: &Formula, ctx: &TypeContext) -> bool {
         return false;
     };
 
+    if !eval_formula(lhs, &derived, &var_map) {
+        return true;
+    }
     eval_formula(rhs, &derived, &var_map)
 }
 

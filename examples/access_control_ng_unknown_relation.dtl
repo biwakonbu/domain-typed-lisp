@@ -1,0 +1,3 @@
+(sort Subject)
+(relation p (Subject))
+(defn f ((x Subject)) Bool (unknown x))

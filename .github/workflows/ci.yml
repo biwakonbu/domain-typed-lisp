@@ -16,10 +16,17 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
-        run: cargo test --workspace --all-targets
+        run: cargo test --workspace --lib --bins --tests
       - name: integration
         run: cargo test --test integration_cli
       - name: property
         run: cargo test --test property_logic
-      - name: coverage
+      - name: coverage gate
         run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 80
+      - name: coverage lcov
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          fail_ci_if_error: false

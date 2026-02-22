@@ -22,6 +22,11 @@ fn parser_rejects_sort_arity() {
 }
 
 #[test]
+fn parser_rejects_import_arity() {
+    expect_parse_error("(import a b)", "import expects exactly 1 path argument");
+}
+
+#[test]
 fn parser_rejects_relation_non_list_args() {
     expect_parse_error("(relation r A)", "relation argument sorts must be a list");
 }

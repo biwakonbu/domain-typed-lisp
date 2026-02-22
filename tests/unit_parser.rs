@@ -16,6 +16,18 @@ fn parser_accepts_minimal_program() {
 }
 
 #[test]
+fn parser_accepts_import_form() {
+    let src = r#"
+        (import "schema.dtl")
+        (sort Subject)
+    "#;
+
+    let program = parse_program(src).expect("parse should succeed");
+    assert_eq!(program.imports.len(), 1);
+    assert_eq!(program.imports[0].path, "schema.dtl");
+}
+
+#[test]
 fn parser_reports_unbalanced_parentheses() {
     let src = r#"
         (sort Subject

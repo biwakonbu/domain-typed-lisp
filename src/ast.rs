@@ -3,6 +3,7 @@ use crate::types::{Atom, Formula, LogicTerm, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
+    pub imports: Vec<ImportDecl>,
     pub sorts: Vec<SortDecl>,
     pub relations: Vec<RelationDecl>,
     pub facts: Vec<Fact>,
@@ -13,6 +14,7 @@ pub struct Program {
 impl Program {
     pub fn new() -> Self {
         Self {
+            imports: Vec::new(),
             sorts: Vec::new(),
             relations: Vec::new(),
             facts: Vec::new(),
@@ -26,6 +28,12 @@ impl Default for Program {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportDecl {
+    pub path: String,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

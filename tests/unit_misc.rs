@@ -14,8 +14,23 @@ fn diagnostics_line_col_and_display() {
 }
 
 #[test]
+fn diagnostics_hint_is_attached_for_known_code() {
+    let d = Diagnostic::new("E-TYPE", "msg", None);
+    assert!(d.hint().is_some());
+    assert!(d.to_string().contains("hint:"));
+}
+
+#[test]
+fn diagnostics_can_hold_source_path() {
+    let d = Diagnostic::new("E-IO", "msg", None).with_source("foo/bar.dtl");
+    assert_eq!(d.source(), Some("foo/bar.dtl"));
+    assert!(d.to_string().contains("foo/bar.dtl: E-IO: msg"));
+}
+
+#[test]
 fn ast_program_default_and_new() {
     let p = Program::new();
+    assert!(p.imports.is_empty());
     assert!(p.sorts.is_empty());
     let p2 = Program::default();
     assert!(p2.relations.is_empty());

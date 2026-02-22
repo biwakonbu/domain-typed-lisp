@@ -75,3 +75,45 @@ fn typecheck_accepts_entailment_via_rule() {
 fn typecheck_rejects_return_type_mismatch() {
     expect_type_error("(defn f ((x Symbol)) Int x)", "E-TYPE", "type mismatch");
 }
+
+#[test]
+fn typecheck_accepts_entailment_with_conjunction_and_rule() {
+    let src = r#"
+        (sort Subject)
+        (relation p (Subject))
+        (relation q (Subject))
+        (rule (q ?u) (p ?u))
+        (fact p alice)
+
+        (defn base ((u Subject))
+          (Refine b Bool (p u))
+          (p u))
+
+        (defn stronger ((u Subject))
+          (Refine b Bool (and (p u) (q u)))
+          (base u))
+    "#;
+    let program = parse_program(src).expect("parse should succeed");
+    let report = check_program(&program).expect("typecheck should succeed");
+    assert_eq!(report.errors, 0);
+}
+
+#[test]
+fn typecheck_accepts_vacuous_entailment_with_negated_antecedent() {
+    let src = r#"
+        (sort Subject)
+        (relation denied (Subject))
+        (fact denied alice)
+
+        (defn witness ((u Subject))
+          (Refine b Bool (not (denied u)))
+          true)
+
+        (defn caller ((u Subject))
+          (Refine b Bool (not (denied alice)))
+          (witness alice))
+    "#;
+    let program = parse_program(src).expect("parse should succeed");
+    let report = check_program(&program).expect("typecheck should succeed");
+    assert_eq!(report.errors, 0);
+}

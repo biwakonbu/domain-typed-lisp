@@ -1,0 +1,8 @@
+(sort Subject)
+(sort Role)
+(sort Resource)
+(sort Action)
+
+(relation has-role (Subject Role))
+(relation resource-public (Resource))
+(relation can-access (Subject Resource Action))

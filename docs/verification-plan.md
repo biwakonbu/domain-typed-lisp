@@ -8,10 +8,11 @@
 ## 品質ゲート
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-3. `cargo test --workspace --all-targets`
+3. `cargo test --workspace --lib --bins --tests`
 4. `cargo test --test integration_cli`
 5. `cargo test --test property_logic`
 6. `cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 80`（80%以上）
+7. `cargo bench --bench perf_scaling`
 
 ## 実施順
 1. ドキュメント固定

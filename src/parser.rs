@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::ast::{Defn, Expr, Fact, Param, Program, RelationDecl, Rule, SortDecl};
+use crate::ast::{Defn, Expr, Fact, ImportDecl, Param, Program, RelationDecl, Rule, SortDecl};
 use crate::diagnostics::{Diagnostic, make_span};
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
@@ -47,6 +47,7 @@ pub fn parse_program(src: &str) -> Result<Program, Vec<Diagnostic>> {
 
     for form in &sexprs {
         match parse_toplevel(src, form) {
+            Ok(TopLevel::Import(i)) => program.imports.push(i),
             Ok(TopLevel::Sort(s)) => program.sorts.push(s),
             Ok(TopLevel::Relation(r)) => program.relations.push(r),
             Ok(TopLevel::Fact(f)) => program.facts.push(f),
@@ -186,6 +187,7 @@ fn parse_one(src: &str, tokens: &[Token], idx: &mut usize) -> Result<SExpr, Diag
 }
 
 enum TopLevel {
+    Import(ImportDecl),
     Sort(SortDecl),
     Relation(RelationDecl),
     Fact(Fact),
@@ -222,6 +224,7 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
     })?;
 
     match head {
+        "import" => parse_import(src, list),
         "sort" => parse_sort(src, list),
         "relation" => parse_relation(src, list),
         "fact" => parse_fact(src, list),
@@ -233,6 +236,28 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
             Some(make_span(src, start, end)),
         )),
     }
+}
+
+fn parse_import(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
+    if list.len() != 2 {
+        let (s, e) = list[0].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "import expects exactly 1 path argument",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    let path_atom = atom_required(src, &list[1], "import path")?;
+    let path = if path_atom.starts_with('"') && path_atom.ends_with('"') && path_atom.len() >= 2 {
+        path_atom[1..path_atom.len() - 1].to_string()
+    } else {
+        path_atom
+    };
+    let (s, e) = list[0].span_bounds();
+    Ok(TopLevel::Import(ImportDecl {
+        path,
+        span: make_span(src, s, e),
+    }))
 }
 
 fn parse_sort(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {

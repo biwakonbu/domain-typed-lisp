@@ -1,5 +1,6 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
+use serde_json::Value;
 use std::fs;
 use tempfile::tempdir;
 
@@ -57,4 +58,243 @@ fn cli_returns_one_for_missing_file() {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("E-IO"));
+}
+
+#[test]
+fn cli_accepts_multiple_files() {
+    let dir = tempdir().expect("tempdir");
+    let path1 = dir.path().join("schema.dtl");
+    let path2 = dir.path().join("policy.dtl");
+    fs::write(
+        &path1,
+        r#"
+        (sort Subject)
+        (sort Resource)
+        (sort Action)
+        (relation can-access (Subject Resource Action))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &path2,
+        r#"
+        (defn can-read ((u Subject) (r Resource))
+          (Refine b Bool (can-access u r read))
+          (can-access u r read))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("check").arg(&path1).arg(&path2);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("ok"));
+}
+
+#[test]
+fn cli_accepts_import_entry_file() {
+    let dir = tempdir().expect("tempdir");
+    let schema = dir.path().join("schema.dtl");
+    let policy = dir.path().join("policy.dtl");
+    let entry = dir.path().join("entry.dtl");
+    fs::write(
+        &schema,
+        r#"
+        (sort Subject)
+        (sort Resource)
+        (sort Action)
+        (relation can-access (Subject Resource Action))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &policy,
+        r#"
+        (defn can-read ((u Subject) (r Resource))
+          (Refine b Bool (can-access u r read))
+          (can-access u r read))
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &entry,
+        r#"
+        (import "schema.dtl")
+        (import "policy.dtl")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("check").arg(&entry);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("ok"));
+}
+
+#[test]
+fn cli_reports_missing_import_file() {
+    let dir = tempdir().expect("tempdir");
+    let entry = dir.path().join("entry_missing_import.dtl");
+    fs::write(
+        &entry,
+        r#"
+        (import "missing.dtl")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("check").arg(&entry);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("E-IO"))
+        .stderr(predicate::str::contains("missing.dtl"));
+}
+
+#[test]
+fn cli_reports_import_cycle() {
+    let dir = tempdir().expect("tempdir");
+    let a = dir.path().join("a.dtl");
+    let b = dir.path().join("b.dtl");
+    fs::write(
+        &a,
+        r#"
+        (import "b.dtl")
+        "#,
+    )
+    .expect("write");
+    fs::write(
+        &b,
+        r#"
+        (import "a.dtl")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("check").arg(&a);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("E-IMPORT"));
+}
+
+#[test]
+fn cli_json_output_for_success() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("ok_json.dtl");
+    fs::write(
+        &path,
+        r#"
+        (sort Subject)
+        (sort Resource)
+        (sort Action)
+        (relation can-access (Subject Resource Action))
+        (defn can-read ((u Subject) (r Resource))
+          (Refine b Bool (can-access u r read))
+          (can-access u r read))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["report"]["functions_checked"], 1);
+}
+
+#[test]
+fn cli_json_output_for_failure() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("ng_json.dtl");
+    fs::write(
+        &path,
+        r#"
+        (sort Subject)
+        (relation p (Subject))
+        (defn f ((x Subject)) Bool (unknown x))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-RESOLVE")
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["hint"].is_string())
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["source"] == path.display().to_string().as_str())
+    );
+}
+
+#[test]
+fn cli_json_output_for_missing_file_has_source() {
+    let missing = "/tmp/non-existent-domain-typed-lisp-json-missing-file.dtl";
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(missing)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-IO")
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["source"] == missing)
+    );
 }
