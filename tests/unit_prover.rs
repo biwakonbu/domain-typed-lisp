@@ -73,3 +73,74 @@ fn prove_program_requires_universe() {
             .any(|d| d.message.contains("missing universe declaration"))
     );
 }
+
+#[test]
+fn prove_program_extracts_if_body_obligation() {
+    let src = r#"
+        (data Subject (alice) (bob))
+        (relation allowed (Subject))
+        (relation admin (Subject))
+        (fact admin (alice))
+        (fact allowed (alice))
+        (universe Subject ((alice) (bob)))
+
+        (defn check-admin ((u Subject))
+          (Refine b Bool (allowed u))
+          (if (admin u)
+              (allowed u)
+              (allowed u)))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let trace = prove_program(&program).expect("prove should run");
+    assert!(
+        !has_failed_obligation(&trace),
+        "if 本体の論理化がないと bob で偽反例になる"
+    );
+}
+
+#[test]
+fn prove_program_extracts_match_body_obligation() {
+    let src = r#"
+        (data Subject (alice) (bob))
+        (relation allowed (Subject))
+        (fact allowed (alice))
+        (universe Subject ((alice) (bob)))
+
+        (defn check-user ((u Subject))
+          (Refine b Bool (allowed u))
+          (match u
+            ((alice) (allowed u))
+            ((bob) (allowed u))))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let trace = prove_program(&program).expect("prove should run");
+    assert!(
+        !has_failed_obligation(&trace),
+        "match 本体の論理化がないと bob で偽反例になる"
+    );
+}
+
+#[test]
+fn prove_program_reports_missing_universe_with_span() {
+    let src = r#"
+        (sort Subject)
+        (relation allowed (Subject))
+        (defn check ((u Subject))
+          (Refine b Bool (allowed u))
+          (allowed u))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let errs = prove_program(&program).expect_err("prove should fail");
+    let diag = errs
+        .iter()
+        .find(|d| d.message.contains("missing universe declaration"))
+        .expect("missing universe diagnostic");
+    assert_eq!(diag.code, "E-PROVE");
+    assert!(
+        diag.span.is_some(),
+        "missing universe diagnostic should have span"
+    );
+}

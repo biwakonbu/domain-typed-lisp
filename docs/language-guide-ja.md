@@ -79,9 +79,14 @@
 ### 4.3 NFC 正規化
 識別子 Atom は NFC 正規化されます。見た目同一の合成差異（例: `ガ` と `ガ`）は同一視されます。
 
-注意: `import` の `"path"` は正規化対象外です（ファイルパス互換のため）。
+ただし quoted Atom（`"..."`）は NFC 正規化されません。`import` の `"path"` は quoted Atom として扱われます（ファイルパス互換のため）。
 
-### 4.4 `Symbol` と `Domain` は別物
+### 4.4 quoted Atom の境界
+- quoted Atom は**文字列リテラルではありません**。`\\n` / `\\t` / `\\\"` などのエスケープは解釈されません。
+- バックスラッシュはそのまま保持されます。
+- v0.2 の lexer は空白・`(`・`)`・`;` でトークン分割するため、quoted Atom 内の空白や `;` を含む記述は扱えません。
+
+### 4.5 `Symbol` と `Domain` / `Adt` は別物
 `Symbol` を `Domain`/`Adt` 引数に暗黙で渡せません。明示的に型を合わせます。
 
 ## 5. 型システムの読み方
@@ -137,27 +142,90 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 - `--format markdown`（既定）: `spec.md` / `proof-trace.json` / `doc-index.json`
 - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
 
-## 8. 顧客・契約管理の最小実例
+## 8. チュートリアル: `check -> prove -> doc` 一気通貫
 
-実ファイル:
-- `examples/customer_contract_ja.dtl`
+### 8.1 前提
+- 作業ディレクトリ: リポジトリルート
+- 入力ファイル: `examples/customer_contract_ja.dtl`
 
-実行:
+### 8.2 `check`: 静的検査を先に確定させる
 
 ```bash
-cargo run -- check examples/customer_contract_ja.dtl
+cargo run -- check examples/customer_contract_ja.dtl --format json
+```
+
+成功時の代表出力:
+
+```json
+{"status":"ok","report":{"functions_checked":1,"errors":0}}
+```
+
+この段階で `status=error` の場合、`prove` や `doc` へ進む意味はありません。先に `diagnostics` を解消します。
+
+### 8.3 `prove`: 証明義務を有限モデルで検証する
+
+```bash
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
+```
+
+この実行で次の 2 つを確認します。
+- 標準出力 JSON の `status` が `ok`
+- `out_ja/proof-trace.json` が生成される
+
+`proof-trace.json` の最小確認:
+
+```bash
+jq '.schema_version, .obligations[] | {id, kind, result}' out_ja/proof-trace.json
+```
+
+`result` が `failed` の義務が 1 つでもある場合、`doc` は失敗します。
+
+### 8.4 `doc`: 証明済み仕様だけを成果物化する
+
+Markdown 仕様を出力:
+
+```bash
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown
+```
+
+JSON 仕様を出力:
+
+```bash
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format json
 ```
 
-## 9. 失敗時のデバッグ手順（推奨）
-1. `check` を通す（構文/解決/型を先に潰す）
-2. `E-RESOLVE` が出たら宣言順ではなく「定義の有無・重複・rule 安全性」を見る
-3. `E-TYPE` は `Symbol` と `Domain/Adt` の混同を疑う
-4. `prove` で落ちたら `universe` の不足と反例トレースを見る
+期待成果物:
+- Markdown モード: `spec.md`, `proof-trace.json`, `doc-index.json`
+- JSON モード: `spec.json`, `proof-trace.json`, `doc-index.json`
 
-## 10. よくある設計ミスと対策
+## 9. 成果物の読み方
+
+### 9.1 `doc-index.json`
+- バンドルの入口です。
+- `files` に含まれるファイルが「その run の正」です。
+- `status` は現状 `ok` 固定です。
+
+### 9.2 `proof-trace.json`
+- `schema_version`: トレース契約バージョン
+- `obligations[].id`: `defn::...` または `assert::...`
+- `obligations[].result`: `proved` / `failed`
+- `counterexample`: 失敗時のみ出現（`valuation`, `premises`, `missing_goals`）
+
+実務では `failed` 義務の `missing_goals` から、欠落ルール/事実/定義ミスを逆引きします。
+
+### 9.3 `spec.md` / `spec.json`
+- `sort` / `data` / `relation` / `assert` の公開仕様
+- `proof_status`（JSON）または `Proof Status`（Markdown）で義務の最終状態を追跡
+
+## 10. 失敗時のデバッグ手順（推奨）
+1. `check --format json` で構文・解決・型を先に潰す
+2. `prove --format json --out ...` で `proof-trace.json` を必ず保存する
+3. 失敗義務の `counterexample.missing_goals` を修正対象として扱う
+4. 修正後に `doc` を再実行して成果物生成まで確認する
+
+エラーコードごとの原因と対処は `docs/troubleshooting-errors-ja.md` を参照してください。
+
+## 11. よくある設計ミスと対策
 
 ### ミス 1: 値語彙を `sort` で固定しようとする
 - 症状: 期待より緩い（未知値が入りうる）
@@ -171,8 +239,12 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - 症状: `unsafe rule` の `E-RESOLVE`
 - 対策: 正リテラルに束縛述語を追加する
 
-## 11. 参考ドキュメント
+## 12. 参考ドキュメント
 - 形式仕様: `docs/language-spec.md`
+- エラーコード別対処: `docs/troubleshooting-errors-ja.md`
 - アーキテクチャ: `docs/architecture-v0.2.md`
 - 移行: `docs/migration-v0.2.md`
 - テスト観点: `docs/test-matrix.md`
+- v0.3 停止性解析設計: `docs/termination-analysis-v0.3.md`
+- v0.3 ADT parametric 化評価: `docs/adt-parametric-evaluation-v0.3.md`
+- ADR 0001 import 名前空間: `docs/adr/0001-import-namespace.md`

@@ -1,4 +1,5 @@
 use dtl::parse_program;
+use dtl::types::LogicTerm;
 
 #[test]
 fn parser_accepts_minimal_program() {
@@ -85,4 +86,33 @@ fn parser_keeps_import_path_atom_without_normalization() {
     let src = format!("(import \"{decomposed}\")");
     let program = parse_program(&src).expect("parse should succeed");
     assert_eq!(program.imports[0].path, decomposed);
+}
+
+#[test]
+fn parser_keeps_quoted_atom_without_nfc_normalization() {
+    let decomposed_quoted = "\"\u{30AB}\u{3099}\"";
+    let src = format!("(relation label (Symbol)) (fact label {decomposed_quoted})");
+    let program = parse_program(&src).expect("parse should succeed");
+    assert_eq!(
+        program.facts[0].terms,
+        vec![LogicTerm::Symbol(decomposed_quoted.to_string())]
+    );
+}
+
+#[test]
+fn parser_keeps_escape_sequences_literal_in_import_path() {
+    let src = r#"(import "a\"b\nc\t.dtl")"#;
+    let program = parse_program(src).expect("parse should succeed");
+    assert_eq!(program.imports[0].path, r#"a\"b\nc\t.dtl"#);
+}
+
+#[test]
+fn parser_rejects_whitespace_inside_quoted_atom() {
+    let src = r#"(sort "A B")"#;
+    let errors = parse_program(src).expect_err("parse should fail");
+    assert!(
+        errors
+            .iter()
+            .any(|d| d.message.contains("sort expects exactly 1 argument"))
+    );
 }

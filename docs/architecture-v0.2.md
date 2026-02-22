@@ -24,3 +24,8 @@
 - `doc --out DIR --format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
 - `doc --out DIR --format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
 - 未証明義務がある場合 `doc` は失敗する。
+
+## v0.3 設計メモ
+- 停止性解析の段階移行案: `docs/termination-analysis-v0.3.md`
+- ADT parametric 化評価: `docs/adt-parametric-evaluation-v0.3.md`
+- import 名前空間 ADR: `docs/adr/0001-import-namespace.md`

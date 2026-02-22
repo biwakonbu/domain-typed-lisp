@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::ast::{Expr, Program};
-use crate::diagnostics::Diagnostic;
+use crate::diagnostics::{Diagnostic, Span};
 use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
 use crate::name_resolve::resolve_program;
 use crate::stratify::compute_strata;
@@ -58,7 +58,14 @@ struct ObligationSpec {
     kind: String,
     lhs: Formula,
     rhs: Formula,
-    vars: Vec<(String, Type)>,
+    vars: Vec<QuantifiedVarSpec>,
+}
+
+#[derive(Debug, Clone)]
+struct QuantifiedVarSpec {
+    name: String,
+    ty: Type,
+    span: Span,
 }
 
 #[derive(Debug, Serialize)]
@@ -468,7 +475,11 @@ fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
             let vars = defn
                 .params
                 .iter()
-                .map(|p| (p.name.clone(), p.ty.clone()))
+                .map(|p| QuantifiedVarSpec {
+                    name: p.name.clone(),
+                    ty: p.ty.clone(),
+                    span: p.span.clone(),
+                })
                 .collect::<Vec<_>>();
             obligations.push(ObligationSpec {
                 id: format!("defn::{}", defn.name),
@@ -489,7 +500,11 @@ fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
             vars: assertion
                 .params
                 .iter()
-                .map(|p| (p.name.clone(), p.ty.clone()))
+                .map(|p| QuantifiedVarSpec {
+                    name: p.name.clone(),
+                    ty: p.ty.clone(),
+                    span: p.span.clone(),
+                })
                 .collect(),
         });
     }
@@ -529,13 +544,67 @@ fn formula_from_expr(
             let base = formula_from_expr(body, relation_names, constructor_names)?;
             Some(substitute_formula_terms(&base, &subst))
         }
-        Expr::Var { .. }
-        | Expr::Symbol { .. }
-        | Expr::Int { .. }
-        | Expr::If { .. }
-        | Expr::Match { .. }
-        | Expr::Call { .. } => None,
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let then_formula = formula_from_expr(then_branch, relation_names, constructor_names)?;
+            let else_formula = formula_from_expr(else_branch, relation_names, constructor_names)?;
+            if let Some(cond_formula) = formula_from_expr(cond, relation_names, constructor_names) {
+                Some(formula_or(
+                    formula_and(vec![cond_formula.clone(), then_formula]),
+                    formula_and(vec![formula_not(cond_formula), else_formula]),
+                ))
+            } else {
+                Some(formula_or(then_formula, else_formula))
+            }
+        }
+        Expr::Match { arms, .. } => {
+            if arms.is_empty() {
+                return Some(formula_false());
+            }
+            let mut acc = formula_false();
+            for arm in arms {
+                let branch = formula_from_expr(&arm.body, relation_names, constructor_names)?;
+                acc = formula_or(acc, branch);
+            }
+            Some(acc)
+        }
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Call { .. } => None,
     }
+}
+
+fn formula_false() -> Formula {
+    Formula::Not(Box::new(Formula::True))
+}
+
+fn formula_not(formula: Formula) -> Formula {
+    match formula {
+        Formula::Not(inner) => *inner,
+        other => Formula::Not(Box::new(other)),
+    }
+}
+
+fn formula_and(items: Vec<Formula>) -> Formula {
+    let mut flattened = Vec::new();
+    for item in items {
+        match item {
+            Formula::True => {}
+            Formula::And(parts) => flattened.extend(parts),
+            other => flattened.push(other),
+        }
+    }
+    match flattened.len() {
+        0 => Formula::True,
+        1 => flattened.into_iter().next().expect("single formula"),
+        _ => Formula::And(flattened),
+    }
+}
+
+fn formula_or(left: Formula, right: Formula) -> Formula {
+    formula_not(formula_and(vec![formula_not(left), formula_not(right)]))
 }
 
 fn expr_to_logic_term(expr: &Expr, constructor_names: &HashSet<String>) -> Option<LogicTerm> {
@@ -594,27 +663,27 @@ fn substitute_term(term: &LogicTerm, subst: &HashMap<String, LogicTerm>) -> Logi
 }
 
 fn enumerate_valuations(
-    vars: &[(String, Type)],
+    vars: &[QuantifiedVarSpec],
     universe_map: &HashMap<String, Vec<Value>>,
 ) -> Result<Vec<HashMap<String, Value>>, Vec<Diagnostic>> {
     let mut domains = Vec::new();
-    for (name, ty) in vars {
-        let key = type_key(ty)?;
+    for var in vars {
+        let key = type_key(&var.ty)?;
         let Some(values) = universe_map.get(&key) else {
             return Err(vec![Diagnostic::new(
                 "E-PROVE",
                 format!("missing universe declaration for type: {key}"),
-                None,
+                Some(var.span.clone()),
             )]);
         };
         if values.is_empty() {
             return Err(vec![Diagnostic::new(
                 "E-PROVE",
                 format!("universe for type {key} must not be empty"),
-                None,
+                Some(var.span.clone()),
             )]);
         }
-        domains.push((name.clone(), values.clone()));
+        domains.push((var.name.clone(), values.clone()));
     }
 
     let mut out = Vec::new();

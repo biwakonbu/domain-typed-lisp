@@ -2,7 +2,14 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use serde_json::{Value, json};
 use std::fs;
+use std::path::PathBuf;
 use tempfile::tempdir;
+
+fn example_path(file: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(file)
+}
 
 #[test]
 fn cli_prove_json_writes_trace_file() {
@@ -213,4 +220,37 @@ fn cli_doc_json_generates_json_bundle() {
             .expect("valid doc index json");
     assert_eq!(index["files"], json!(["spec.json", "proof-trace.json"]));
     assert_eq!(index["status"], "ok");
+}
+
+#[test]
+fn cli_doc_generates_bundle_for_japanese_example() {
+    let src = example_path("customer_contract_ja.dtl");
+    let dir = tempdir().expect("tempdir");
+    let out = dir.path().join("ja_doc_out");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("doc")
+        .arg(&src)
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success();
+
+    assert!(out.join("spec.json").exists());
+    assert!(out.join("proof-trace.json").exists());
+    assert!(out.join("doc-index.json").exists());
+
+    let trace: Value = serde_json::from_slice(
+        &fs::read(out.join("proof-trace.json")).expect("read japanese proof trace"),
+    )
+    .expect("valid japanese proof trace");
+    assert!(
+        trace["obligations"]
+            .as_array()
+            .expect("obligations")
+            .iter()
+            .any(|o| o["id"] == "defn::契約可否" && o["result"] == "proved")
+    );
 }
