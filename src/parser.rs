@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::iter::Peekable;
+use std::str::CharIndices;
 
 use crate::ast::{
     AssertDecl, ConstructorDecl, DataDecl, Defn, Expr, Fact, ImportDecl, MatchArm, Param, Pattern,
@@ -6,6 +8,7 @@ use crate::ast::{
 };
 use crate::diagnostics::{Diagnostic, make_span};
 use crate::types::{Atom, Formula, LogicTerm, Type};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone)]
 struct Token {
@@ -72,57 +75,83 @@ pub fn parse_program(src: &str) -> Result<Program, Vec<Diagnostic>> {
 
 fn lex(src: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
     let mut tokens = Vec::new();
-    let bytes = src.as_bytes();
-    let mut i = 0usize;
+    let mut it = src.char_indices().peekable();
 
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
+    while let Some((idx, ch)) = it.next() {
         if ch.is_whitespace() {
-            i += 1;
             continue;
         }
         if ch == ';' {
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
+            skip_comment(&mut it);
             continue;
         }
         if ch == '(' {
             tokens.push(Token {
                 kind: TokenKind::LParen,
-                start: i,
-                end: i + 1,
+                start: idx,
+                end: idx + ch.len_utf8(),
             });
-            i += 1;
             continue;
         }
         if ch == ')' {
             tokens.push(Token {
                 kind: TokenKind::RParen,
-                start: i,
-                end: i + 1,
+                start: idx,
+                end: idx + ch.len_utf8(),
             });
-            i += 1;
             continue;
         }
 
-        let start = i;
-        while i < bytes.len() {
-            let c = bytes[i] as char;
-            if c.is_whitespace() || c == '(' || c == ')' || c == ';' {
-                break;
-            }
-            i += 1;
-        }
-        let text = &src[start..i];
+        let (start, end) = consume_atom(idx, ch, &mut it);
+        let text = &src[start..end];
         tokens.push(Token {
-            kind: TokenKind::Atom(text.to_string()),
+            kind: TokenKind::Atom(normalize_atom(text)),
             start,
-            end: i,
+            end,
         });
     }
 
     Ok(tokens)
+}
+
+fn skip_comment(it: &mut Peekable<CharIndices<'_>>) {
+    while let Some((_, ch)) = it.peek().copied() {
+        if ch == '\n' {
+            break;
+        }
+        it.next();
+    }
+}
+
+fn consume_atom(start: usize, first: char, it: &mut Peekable<CharIndices<'_>>) -> (usize, usize) {
+    let mut end = start + first.len_utf8();
+    while let Some((idx, ch)) = it.peek().copied() {
+        if ch.is_whitespace() || ch == '(' || ch == ')' || ch == ';' {
+            break;
+        }
+        it.next();
+        end = idx + ch.len_utf8();
+    }
+    (start, end)
+}
+
+fn normalize_atom(text: &str) -> String {
+    if is_quoted_atom(text) {
+        text.to_string()
+    } else {
+        text.nfc().collect()
+    }
+}
+
+fn is_quoted_atom(text: &str) -> bool {
+    if text.len() < 2 {
+        return false;
+    }
+    if !text.starts_with('"') || !text.ends_with('"') {
+        return false;
+    }
+    let quote_count = text.chars().filter(|c| *c == '"').count();
+    quote_count >= 2
 }
 
 fn parse_sexprs(src: &str, tokens: &[Token]) -> Result<Vec<SExpr>, Vec<Diagnostic>> {

@@ -298,3 +298,29 @@ fn cli_json_output_for_missing_file_has_source() {
             .any(|d| d["source"] == missing)
     );
 }
+
+#[test]
+fn cli_handles_japanese_identifiers_without_panic() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("ja_ok.dtl");
+    fs::write(
+        &path,
+        r#"
+        (sort 主体)
+        (sort 契約)
+        (data 顧客種別 (法人) (個人))
+        (relation 契約可能 (主体 契約 顧客種別))
+        (fact 契約可能 山田 基本契約 (法人))
+        (defn 契約可能か ((u 主体) (k 契約) (種別 顧客種別))
+          (Refine b Bool (契約可能 u k 種別))
+          (契約可能 u k 種別))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("check").arg(&path);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("ok"));
+}

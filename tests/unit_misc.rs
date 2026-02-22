@@ -14,6 +14,13 @@ fn diagnostics_line_col_and_display() {
 }
 
 #[test]
+fn diagnostics_line_col_counts_unicode_scalars() {
+    let src = "aあb";
+    let (line, col) = line_col(src, 4);
+    assert_eq!((line, col), (1, 3));
+}
+
+#[test]
 fn diagnostics_hint_is_attached_for_known_code() {
     let d = Diagnostic::new("E-TYPE", "msg", None);
     assert!(d.hint().is_some());

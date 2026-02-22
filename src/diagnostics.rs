@@ -84,11 +84,11 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
 pub fn line_col(src: &str, offset: usize) -> (usize, usize) {
     let mut line = 1usize;
     let mut col = 1usize;
-    for (i, b) in src.as_bytes().iter().enumerate() {
+    for (i, ch) in src.char_indices() {
         if i >= offset {
             break;
         }
-        if *b == b'\n' {
+        if ch == '\n' {
             line += 1;
             col = 1;
         } else {

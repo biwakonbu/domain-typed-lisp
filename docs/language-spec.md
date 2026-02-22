@@ -9,6 +9,9 @@
 - S 式のみを受け付ける。
 - 1 ファイルに複数トップレベルフォームを記述できる。
 - `import` で複数ファイルを連結し、単一 `Program` として検査する。
+- 識別子（sort/data/relation/defn 名、定数など）は Unicode を許可する。
+- Atom は NFC へ正規化して解釈する（`import` の引用符付きパス文字列は正規化しない）。
+- キーワードは英語固定（`sort`/`data`/`relation`/`defn` など）。日本語キーワードは v0.2 では未対応。
 
 ## 2. CLI
 - `dtl check <FILE>... [--format text|json]`
@@ -111,6 +114,11 @@ term = var | symbol | int | bool | (Ctor term*)
   - 関数再帰を禁止（`E-TOTAL`）。
   - `match` は網羅必須・到達不能分岐検出（`E-MATCH`）。
   - `Symbol` と `Domain` の暗黙互換は行わない。
+  - 意味固定ポリシー:
+    - `data` constructor を業務語彙の閉集合として利用する（正規名強制）。
+    - `sort` は開集合として扱う。
+    - 概念変更（v1/v2 差分や外部連携差分）は型を分離し、`defn` で明示変換する。
+    - 同義語 alias 機能は v0.2 では提供しない。
 - `prove`
   - 証明義務:
     - `defn` の戻り値 Refinement 含意
