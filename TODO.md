@@ -9,6 +9,8 @@
 - [ ] `prove` の義務抽出を強化する（`if` / `match` を含む `defn` 本体の論理化）。
 - [ ] universe 未宣言型に対する診断を source/span 付きで改善する。
 - [ ] 反例最小化の性能計測を追加する（大きい universe での探索コスト評価）。
+- [ ] `docs/language-guide-ja.md` をチュートリアル化する（`check -> prove -> doc` の一気通貫手順と成果物の読み方を追加）。
+- [ ] エラーコード別トラブルシュート集を作成する（`E-PARSE`/`E-RESOLVE`/`E-TYPE`/`E-MATCH`/`E-PROVE` の原因と対処を整理）。
 
 ## P2
 - [ ] v0.3 に向けた停止性解析の設計（再帰禁止からの段階移行）を策定する。
@@ -18,3 +20,5 @@
 ## Technical Debt
 - [ ] 複数ファイル入力時、resolve/typecheck 診断の `source` 付与を厳密化する（Span にファイル識別子導入）。
 - [ ] ベンチ自動実行を CI に組み込む。
+- [ ] 日本語サンプル `examples/customer_contract_ja.dtl` の `doc` 生成を E2E テストに追加する。
+- [ ] Atom 正規化の仕様境界を明確化する（引用符・エスケープを含む Atom の取り扱いを言語仕様に追記し、対応テストを追加）。

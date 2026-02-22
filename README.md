@@ -52,6 +52,7 @@ cargo test --workspace --lib --bins --tests
 
 ## ドキュメント
 - [言語仕様 v0.2](docs/language-spec.md)
+- [言語解説ガイド v0.2](docs/language-guide-ja.md)
 - [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
 - [v0.2 移行ガイド](docs/migration-v0.2.md)
 - [検証計画](docs/verification-plan.md)
