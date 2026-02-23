@@ -77,7 +77,8 @@
 ### 4.1 Core / Surface 二層構文
 - Core: 既存の英語キーワード S 式（後方互換）。
 - Surface: タグ付き可読構文（日本語/英語エイリアス）。
-- 先頭コメント `; syntax: core|surface` で明示できます（省略時 auto 判定）。
+- 先頭コメント `; syntax: core|surface|auto` で明示できます（省略時 auto 判定）。
+- auto 判定で Core/Surface を同一ファイルに混在させると `E-SYNTAX-AUTO` になります。
 
 Surface 例:
 ```lisp
@@ -142,6 +143,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 ### 7.1 `check`
 失敗の主因は次です。
 - `E-PARSE`: 形が不正
+- `E-SYNTAX-AUTO`: `syntax: auto` 判定で Core/Surface が混在
 - `E-RESOLVE`: 名前未定義、重複、unsafe rule
 - `E-TYPE`: 型不一致
 - `E-TOTAL`: 非構造再帰（非 tail / 非減少）または相互再帰
@@ -162,7 +164,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 cargo run -- lint examples/customer_contract_ja.dtl --format json
 ```
 - `L-DUP-EXACT`: 確定重複
-- `L-DUP-MAYBE`: 近似同値による重複候補（`--semantic-dup`）
+- `L-DUP-MAYBE`: 有限モデルでの双方向検証による重複候補（`--semantic-dup`）
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定を universe 不足でスキップ
 - `L-UNUSED-DECL`: 未使用宣言
 - `--deny-warnings` を付けると warning で exit 1
@@ -264,7 +266,47 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 
 エラーコードごとの原因と対処は `docs/troubleshooting-errors-ja.md` を参照してください。
 
-## 11. よくある設計ミスと対策
+## 11. 複雑シナリオ実践
+
+### 11.1 マルチファイル + Surface + 複数 `@context`
+
+対象:
+- `examples/complex_policy_schema.dtl`
+- `examples/complex_policy_rules.dtl`
+- `examples/complex_policy_import_entry.dtl`
+
+```bash
+cargo run -- check examples/complex_policy_import_entry.dtl --format json
+cargo run -- prove examples/complex_policy_import_entry.dtl --format json --out out_complex
+```
+
+このケースでは、`import` 分割・`@context` ブロック・構造再帰 `defn`・`assert` を同時に確認できます。
+
+### 11.2 `lint --semantic-dup` の厳密判定
+
+対象:
+- `examples/semantic_dup_advanced.dtl`
+
+```bash
+cargo run -- lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
+```
+
+`rule` / `assert` / `defn` それぞれで `L-DUP-MAYBE` が出ることを確認できます。
+`confidence` は固定値ではなく、モデルカバレッジと反例探索結果に応じて変動します。
+
+### 11.3 ネスト `match` + `let` alias 構造再帰
+
+対象:
+- `examples/recursive_nested_ok.dtl`
+
+```bash
+cargo run -- check examples/recursive_nested_ok.dtl --format json
+cargo run -- prove examples/recursive_nested_ok.dtl --format json --out out_recursive
+```
+
+strict subterm 判定の境界（`let` alias、ネスト `match`）を再現できます。
+
+## 12. よくある設計ミスと対策
 
 ### ミス 1: 値語彙を `sort` で固定しようとする
 - 症状: 期待より緩い（未知値が入りうる）
@@ -278,12 +320,19 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - 症状: `unsafe rule` の `E-RESOLVE`
 - 対策: 正リテラルに束縛述語を追加する
 
-## 12. 参考ドキュメント
+## 13. 既知の制約（2026-02-23 時点）
+
+- `L-DUP-MAYBE` の `confidence` は近似指標であり、確率的保証値ではない（モデル境界と評価可能性に依存）。
+- `--semantic-dup` は function 型パラメータを列挙できないため、該当 `defn` の厳密比較はスキップされる。
+- `defn` 同値評価には深さ上限（`MAX_EVAL_DEPTH=256`）があるため、非常に深い再帰では比較不能になる可能性がある。
+
+## 14. 参考ドキュメント
 - 形式仕様: `docs/language-spec.md`
 - エラーコード別対処: `docs/troubleshooting-errors-ja.md`
 - アーキテクチャ: `docs/architecture-v0.2.md`
 - 移行: `docs/migration-v0.2.md`
 - テスト観点: `docs/test-matrix.md`
+- 複雑シナリオ集: `docs/example-scenarios-ja.md`
 - v0.3 停止性解析設計: `docs/termination-analysis-v0.3.md`
 - v0.3 ADT parametric 化評価: `docs/adt-parametric-evaluation-v0.3.md`
 - ADR 0001 import 名前空間: `docs/adr/0001-import-namespace.md`

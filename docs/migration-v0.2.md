@@ -10,7 +10,8 @@
 - `Symbol` と `Domain` の暗黙互換を廃止。
 - `match` は網羅必須、到達不能分岐は `E-MATCH`。
 - 証明実行には `universe` 宣言が必要（不足時 `E-PROVE`）。
-- 構文モードが `core/surface` の二層になった（先頭 `; syntax: core|surface`）。
+- 構文モードが `core/surface` の二層になった（先頭 `; syntax: core|surface|auto`）。
+- `syntax:auto` 判定で Core/Surface が同一ファイル混在すると `E-SYNTAX-AUTO` になる。
 
 ## 2. 置換指針
 
@@ -55,7 +56,8 @@ dtl lint path/to/file.dtl --format json --semantic-dup
 ```
 
 - `L-DUP-EXACT`: 確定重複
-- `L-DUP-MAYBE`: 近似同値による重複候補（`--semantic-dup`）
+- `L-DUP-MAYBE`: 有限モデルでの双方向検証による重複候補（`--semantic-dup`）
+  - `confidence` はモデルカバレッジ + 反例探索結果ベースで動的算出（0.00〜0.99）
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
 - `L-UNUSED-DECL`: 未使用宣言
 
@@ -69,6 +71,17 @@ dtl fmt path/to/file.dtl --stdout
 - 既定は in-place 更新
 - `--check` は差分検出のみ
 - `--stdout` は単一入力時のみ有効
+
+### 2.6 複雑シナリオを確認する場合
+
+```bash
+dtl check examples/complex_policy_import_entry.dtl --format json
+dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex
+dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
+```
+
+- `complex_policy_import_entry.dtl`: import + Surface + 複数 `@context` + 構造再帰 + `prove/doc`
+- `semantic_dup_advanced.dtl`: `L-DUP-MAYBE` の厳密判定（`rule/assert/defn`）
 
 ## 3. DSL 修正パターン
 

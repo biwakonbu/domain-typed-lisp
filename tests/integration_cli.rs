@@ -266,6 +266,55 @@ fn cli_json_output_for_failure() {
 }
 
 #[test]
+fn cli_json_output_reports_syntax_auto_conflict() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("mixed_auto.dtl");
+    fs::write(
+        &path,
+        r#"
+        (sort Subject)
+        (relation allowed (Subject))
+        (事実 allowed :項 (alice))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-SYNTAX-AUTO")
+    );
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| {
+                d["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("syntax:auto 判定衝突")
+            })
+    );
+}
+
+#[test]
 fn cli_json_output_for_totality_error_has_machine_readable_fields() {
     let dir = tempdir().expect("tempdir");
     let path = dir.path().join("totality_ng_json.dtl");

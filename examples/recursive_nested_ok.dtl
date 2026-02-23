@@ -1,0 +1,13 @@
+; syntax: surface
+; @context: default
+
+(データ Nat :コンストラクタ ((z) (s Nat)))
+
+(検証 nested-recursion-always-true :引数 () :式 true)
+
+(宇宙 Nat :値 ((z) (s (z)) (s (s (z)))))
+
+(関数 nested-rec-ok
+  :引数 ((n Nat))
+  :戻り Bool
+  :本体 (match n ((z) true) ((s m) (let ((alias m)) (match alias ((z) true) ((s mm) (nested-rec-ok mm)))))))

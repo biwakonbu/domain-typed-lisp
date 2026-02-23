@@ -1,0 +1,43 @@
+; syntax: surface
+; @context: schema
+
+(型 ユーザー)
+
+(関係 同値候補 :引数 (ユーザー))
+(関係 有効 :引数 (ユーザー))
+(関係 監査対象 :引数 (ユーザー))
+
+
+; @context: facts
+
+(事実 有効 :項 (u1))
+(事実 監査対象 :項 (u1))
+(事実 監査対象 :項 (u2))
+
+
+; @context: rules
+
+(規則 :頭 (同値候補 ?u) :本体 (and (有効 ?u) (監査対象 ?u) true))
+(規則 :頭 (同値候補 ?x) :本体 (and (監査対象 ?x) (有効 ?x)))
+
+
+; @context: assertions
+
+(検証 candidate_a :引数 ((u ユーザー)) :式 (and (同値候補 u) true))
+(検証 candidate_b :引数 ((v ユーザー)) :式 (同値候補 v))
+
+
+; @context: functions
+
+(関数 同値関数_a
+  :引数 ((u ユーザー))
+  :戻り Bool
+  :本体 (同値候補 u))
+(関数 同値関数_b
+  :引数 ((x ユーザー))
+  :戻り Bool
+  :本体 (if true (同値候補 x) false))
+
+; @context: universe
+
+(宇宙 ユーザー :値 (u1 u2))

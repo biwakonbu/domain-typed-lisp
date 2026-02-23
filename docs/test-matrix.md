@@ -7,6 +7,7 @@
 | P-03 | parser 異常 | `match` arm 形状不正 | `E-PARSE` | language-spec §4 |
 | P-04 | parser 正常 | surface タグ構文（`型/データ/関係`） | parse 成功 | language-spec §3.10 |
 | P-05 | parser 異常 | surface 主要フォームでタグ欠落 | `E-PARSE` | language-spec §3.10 |
+| P-06 | parser 異常 | `syntax:auto` で Core/Surface 混在 | `E-SYNTAX-AUTO` | language-spec §1/§9 |
 | R-01 | resolve 異常 | constructor 重複 | `E-DATA` | language-spec §3.3 |
 | R-02 | resolve 正常 | 再帰 ADT（`(data List (nil) (cons Symbol List))`） | 成功 | language-spec §3.3 |
 | R-03 | resolve 異常 | 未定義 universe 型 | `E-RESOLVE` | language-spec §3.8 |
@@ -37,3 +38,8 @@
 | C-10 | CLI 異常 | `fmt --check` 差分あり | exit 1 | language-spec §2 |
 | C-11 | CLI 正常 | `doc --format markdown --pdf`（pandoc 不足） | Markdown 成果物生成 + warning | language-spec §8 |
 | C-12 | CLI 正常 | `lint --semantic-dup` + universe 不足 | `L-DUP-SKIP-UNIVERSE` warning | language-spec §2/§10 |
+| C-13 | CLI 正常 | `lint --semantic-dup`（同値 `assert/rule/defn`） | `L-DUP-MAYBE` を3種別で返却 | language-spec §10 |
+| C-14 | CLI 正常 | `lint --semantic-dup`（非同値 defn） | `L-DUP-MAYBE` 非出力 | language-spec §10 |
+| C-15 | E2E 正常 | `complex_policy_import_entry.dtl`（import + Surface + prove） | `check/prove` とも `status=ok` | language-spec §2/§3/§8 |
+| C-16 | E2E 正常 | `recursive_nested_ok.dtl`（ネスト `match` + `let` alias 再帰） | `check/prove` とも `status=ok` | language-spec §7 |
+| C-17 | CLI 正常 | `lint --semantic-dup`（探索量差分あり同値 assert） | `confidence` が探索量に応じて増加 | language-spec §10 |

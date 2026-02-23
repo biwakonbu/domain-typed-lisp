@@ -57,6 +57,22 @@ jobs:
       - name: integration doc cli
         run: cargo test --test integration_prove_doc_cli cli_doc
 
+  cli-lint-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: dtl lint --deny-warnings
+        run: cargo run -- lint examples/customer_contract_ja.dtl --format json --deny-warnings
+
+  cli-fmt-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: dtl fmt --check
+        run: cargo run -- fmt examples/customer_contract_ja.dtl --check
+
   bench:
     runs-on: ubuntu-latest
     steps:

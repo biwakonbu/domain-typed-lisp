@@ -56,9 +56,12 @@ pub fn parse_program_with_source(src: &str, source: &str) -> Result<Program, Vec
 }
 
 fn parse_program_impl(src: &str) -> Result<Program, Vec<Diagnostic>> {
-    match determine_syntax_mode(src) {
-        SyntaxMode::Core => parse_program_core(src),
-        SyntaxMode::Surface => parse_program_surface(src),
+    let tokens = lex(src)?;
+    let sexprs = parse_sexprs(src, &tokens)?;
+    let mode = determine_syntax_mode(src, &sexprs).map_err(|d| vec![d])?;
+    match mode {
+        SyntaxMode::Core => parse_program_forms(src, &sexprs),
+        SyntaxMode::Surface => parse_program_surface_forms(src, &sexprs),
     }
 }
 
@@ -68,10 +71,8 @@ fn parse_program_core(src: &str) -> Result<Program, Vec<Diagnostic>> {
     parse_program_forms(src, &sexprs)
 }
 
-fn parse_program_surface(src: &str) -> Result<Program, Vec<Diagnostic>> {
-    let tokens = lex(src)?;
-    let sexprs = parse_sexprs(src, &tokens)?;
-    let desugared = desugar_surface_program(src, &sexprs)?;
+fn parse_program_surface_forms(src: &str, sexprs: &[SExpr]) -> Result<Program, Vec<Diagnostic>> {
+    let desugared = desugar_surface_program(src, sexprs)?;
     parse_program_core(&desugared)
 }
 
@@ -107,19 +108,189 @@ enum SyntaxMode {
     Surface,
 }
 
-fn determine_syntax_mode(src: &str) -> SyntaxMode {
-    if let Some(mode) = syntax_mode_from_pragma(src) {
-        return mode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyntaxPragma {
+    Core,
+    Surface,
+    Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyntaxSignal {
+    Core,
+    Surface,
+}
+
+#[derive(Debug, Clone)]
+struct SyntaxMarker {
+    signal: SyntaxSignal,
+    reason: &'static str,
+    start: usize,
+    end: usize,
+}
+
+fn determine_syntax_mode(src: &str, sexprs: &[SExpr]) -> Result<SyntaxMode, Diagnostic> {
+    if let Some(pragma_mode) = syntax_mode_from_pragma(src) {
+        return match pragma_mode {
+            SyntaxPragma::Core => Ok(SyntaxMode::Core),
+            SyntaxPragma::Surface => Ok(SyntaxMode::Surface),
+            SyntaxPragma::Auto => determine_auto_syntax_mode(src, sexprs),
+        };
+    }
+    determine_auto_syntax_mode(src, sexprs)
+}
+
+fn determine_auto_syntax_mode(src: &str, sexprs: &[SExpr]) -> Result<SyntaxMode, Diagnostic> {
+    let mut first_core: Option<SyntaxMarker> = None;
+    let mut first_surface: Option<SyntaxMarker> = None;
+
+    for form in sexprs {
+        let Some(marker) = syntax_marker(form) else {
+            continue;
+        };
+        match marker.signal {
+            SyntaxSignal::Core => {
+                if let Some(surface) = &first_surface {
+                    return Err(syntax_auto_conflict_diag(src, surface, &marker));
+                }
+                if first_core.is_none() {
+                    first_core = Some(marker);
+                }
+            }
+            SyntaxSignal::Surface => {
+                if let Some(core) = &first_core {
+                    return Err(syntax_auto_conflict_diag(src, core, &marker));
+                }
+                if first_surface.is_none() {
+                    first_surface = Some(marker);
+                }
+            }
+        }
     }
 
-    if looks_like_surface(src) {
-        SyntaxMode::Surface
+    if first_surface.is_some() || looks_like_surface(src) {
+        Ok(SyntaxMode::Surface)
     } else {
-        SyntaxMode::Core
+        Ok(SyntaxMode::Core)
     }
 }
 
-fn syntax_mode_from_pragma(src: &str) -> Option<SyntaxMode> {
+fn syntax_auto_conflict_diag(src: &str, a: &SyntaxMarker, b: &SyntaxMarker) -> Diagnostic {
+    Diagnostic::new(
+        "E-SYNTAX-AUTO",
+        format!(
+            "syntax:auto 判定衝突: {} と {} が同一ファイルに混在しています。`; syntax: core` か `; syntax: surface` を明示して形式を統一してください。",
+            a.reason, b.reason
+        ),
+        Some(make_span(src, b.start, b.end)),
+    )
+}
+
+fn syntax_marker(form: &SExpr) -> Option<SyntaxMarker> {
+    let (list, start, end) = match form {
+        SExpr::List(items, s, e) => (items, *s, *e),
+        SExpr::Atom(_, _, _) => return None,
+    };
+    if list.is_empty() {
+        return None;
+    }
+    let head = list[0].as_atom()?;
+
+    match head {
+        "型" | "データ" | "関係" | "事実" | "規則" | "検証" | "宇宙" | "関数" => {
+            Some(SyntaxMarker {
+                signal: SyntaxSignal::Surface,
+                reason: "日本語 Surface ヘッド",
+                start,
+                end,
+            })
+        }
+        "import" | "インポート" | "sort" => None,
+        "data" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core data 形式",
+            "surface data タグ形式",
+            start,
+            end,
+        ),
+        "relation" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core relation 形式",
+            "surface relation タグ形式",
+            start,
+            end,
+        ),
+        "fact" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core fact 形式",
+            "surface fact タグ形式",
+            start,
+            end,
+        ),
+        "rule" => syntax_marker_from_tag_position(
+            list,
+            1,
+            "core rule 形式",
+            "surface rule タグ形式",
+            start,
+            end,
+        ),
+        "assert" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core assert 形式",
+            "surface assert タグ形式",
+            start,
+            end,
+        ),
+        "universe" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core universe 形式",
+            "surface universe タグ形式",
+            start,
+            end,
+        ),
+        "defn" => syntax_marker_from_tag_position(
+            list,
+            2,
+            "core defn 形式",
+            "surface defn タグ形式",
+            start,
+            end,
+        ),
+        _ => None,
+    }
+}
+
+fn syntax_marker_from_tag_position(
+    list: &[SExpr],
+    tag_pos: usize,
+    core_reason: &'static str,
+    surface_reason: &'static str,
+    start: usize,
+    end: usize,
+) -> Option<SyntaxMarker> {
+    if list.len() <= tag_pos {
+        return None;
+    }
+    let (signal, reason) = if is_tag_atom(&list[tag_pos]) {
+        (SyntaxSignal::Surface, surface_reason)
+    } else {
+        (SyntaxSignal::Core, core_reason)
+    };
+    Some(SyntaxMarker {
+        signal,
+        reason,
+        start,
+        end,
+    })
+}
+
+fn syntax_mode_from_pragma(src: &str) -> Option<SyntaxPragma> {
     for line in src.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -133,8 +304,9 @@ fn syntax_mode_from_pragma(src: &str) -> Option<SyntaxMode> {
         if let Some(rest) = lower.strip_prefix("syntax:") {
             let mode = rest.trim();
             return match mode {
-                "core" => Some(SyntaxMode::Core),
-                "surface" => Some(SyntaxMode::Surface),
+                "core" => Some(SyntaxPragma::Core),
+                "surface" => Some(SyntaxPragma::Surface),
+                "auto" => Some(SyntaxPragma::Auto),
                 _ => None,
             };
         }

@@ -13,6 +13,10 @@
   - `check/prove/doc` の終了コード・JSON 契約・出力ファイル契約
   - `lint/fmt/doc --pdf` の終了コード・JSON 契約・出力ファイル契約
   - `lint --semantic-dup` の universe 不足時スキップ契約（`L-DUP-SKIP-UNIVERSE`）
+  - `lint --semantic-dup` の同値候補検出契約（`assert/rule/defn` が `L-DUP-MAYBE`）
+  - `lint --semantic-dup` の非同値除外契約（`L-DUP-MAYBE` 非出力）
+  - `lint --semantic-dup` の `confidence` 動的算出契約（モデル探索量が増えるとスコアが上がる）
+  - `syntax:auto` 混在衝突の専用診断契約（`E-SYNTAX-AUTO`）
   - `prove` の JSON 契約ゴールデン固定（stdout/`proof-trace.json` 一致）
   - `doc --format markdown|json` の成果物切替契約
 - property
@@ -32,9 +36,12 @@
 10. `cargo test --test property_logic`
 11. `dtl lint examples/customer_contract_ja.dtl --format json --deny-warnings`
 12. `dtl fmt examples/customer_contract_ja.dtl --check`
-13. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
-14. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
-15. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
+13. `dtl check examples/complex_policy_import_entry.dtl --format json`
+14. `dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex`
+15. `dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup`
+16. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
+17. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
+18. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
 1. 仕様更新（language-spec / migration）

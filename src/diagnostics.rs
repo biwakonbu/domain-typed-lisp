@@ -90,6 +90,9 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
         "E-IO" => Some("入力ファイルのパスと読み取り権限を確認してください。"),
         "E-IMPORT" => Some("import パスと循環依存の有無を確認してください。"),
         "E-PARSE" => Some("S式の括弧対応とフォーム構造を確認してください。"),
+        "E-SYNTAX-AUTO" => Some(
+            "Core/Surface が混在しています。`; syntax: core` または `; syntax: surface` を明示し、1ファイル内の構文を統一してください。",
+        ),
         "E-RESOLVE" => Some("sort/relation/関数名の定義漏れや重複定義を確認してください。"),
         "E-STRATIFY" => Some("否定依存サイクルを除去し、層化可能な規則に分割してください。"),
         "E-TYPE" => Some("関数境界注釈と引数・戻り値の整合性を確認してください。"),

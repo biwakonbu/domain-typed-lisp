@@ -1,7 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::ast::{Defn, Expr, Pattern, Program};
+use crate::ast::{AssertDecl, Defn, Expr, Param, Pattern, Program, Rule};
 use crate::diagnostics::Span;
+use crate::logic_engine::{DerivedFacts, KnowledgeBase, Value, solve_facts};
 use crate::name_resolve::resolve_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
@@ -53,6 +54,19 @@ impl LintDiagnostic {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LintOptions {
     pub semantic_dup: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SemanticDupEvidence {
+    model_points: usize,
+    checked_points: usize,
+    counterexample_found: bool,
+}
+
+impl SemanticDupEvidence {
+    fn equivalent(self) -> bool {
+        !self.counterexample_found && self.checked_points > 0
+    }
 }
 
 pub fn lint_program(program: &Program, options: LintOptions) -> Vec<LintDiagnostic> {
@@ -172,7 +186,10 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
         return out;
     }
 
-    // 近似判定: 形状（述語名/関数名を無視したスケルトン）が一致する場合に maybe とする。
+    let Some(ctx) = build_semantic_dup_context(program) else {
+        return out;
+    };
+
     let mut assert_buckets: HashMap<String, Vec<usize>> = HashMap::new();
     for (idx, assertion) in program.asserts.iter().enumerate() {
         let sig = assertion
@@ -191,7 +208,10 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
                 if normalize_assert(a) == normalize_assert(b) {
                     continue;
                 }
-                if skeleton_formula(&a.formula) == skeleton_formula(&b.formula) {
+                if let Some(evidence) = assertions_semantic_evidence(a, b, &ctx) {
+                    if !evidence.equivalent() {
+                        continue;
+                    }
                     out.push(LintDiagnostic::warning(
                         "L-DUP-MAYBE",
                         "duplicate",
@@ -200,7 +220,7 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
                             a.name, b.name
                         ),
                         Some(b.span.clone()),
-                        Some(0.55),
+                        Some(semantic_dup_confidence(evidence)),
                     ));
                 }
             }
@@ -228,13 +248,16 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
                 if normalize_defn(a) == normalize_defn(b) {
                     continue;
                 }
-                if skeleton_expr(&a.body) == skeleton_expr(&b.body) {
+                if let Some(evidence) = defns_semantic_evidence(a, b, &ctx) {
+                    if !evidence.equivalent() {
+                        continue;
+                    }
                     out.push(LintDiagnostic::warning(
                         "L-DUP-MAYBE",
                         "duplicate",
                         format!("defn {} と {} は等価実装の可能性があります", a.name, b.name),
                         Some(b.span.clone()),
-                        Some(0.55),
+                        Some(semantic_dup_confidence(evidence)),
                     ));
                 }
             }
@@ -254,13 +277,19 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
                 if normalize_rule(a) == normalize_rule(b) {
                     continue;
                 }
-                if skeleton_formula(&a.body) == skeleton_formula(&b.body) {
+                if let Some(evidence) = rules_semantic_evidence(a, b, &ctx) {
+                    if !evidence.equivalent() {
+                        continue;
+                    }
                     out.push(LintDiagnostic::warning(
                         "L-DUP-MAYBE",
                         "duplicate",
-                        format!("rule {} の定義が論理同値の可能性があります", a.head.pred),
+                        format!(
+                            "rule {} の定義が有限モデル上で同値の可能性があります",
+                            a.head.pred
+                        ),
                         Some(b.span.clone()),
-                        Some(0.55),
+                        Some(semantic_dup_confidence(evidence)),
                     ));
                 }
             }
@@ -270,6 +299,586 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
     out
 }
 
+#[derive(Debug, Clone)]
+struct ConstructorSig {
+    owner: String,
+    fields: Vec<Type>,
+}
+
+#[derive(Debug)]
+struct SemanticDupContext<'a> {
+    program: &'a Program,
+    derived: DerivedFacts,
+    universe: HashMap<String, Vec<Value>>,
+    relation_schemas: HashMap<String, Vec<String>>,
+    constructor_sigs: HashMap<String, ConstructorSig>,
+    defn_indices: HashMap<String, usize>,
+}
+
+fn build_semantic_dup_context(program: &Program) -> Option<SemanticDupContext<'_>> {
+    let kb = KnowledgeBase::from_program(program).ok()?;
+    let derived = solve_facts(&kb).ok()?;
+    let universe = build_universe_values(program)?;
+    let relation_schemas = program
+        .relations
+        .iter()
+        .map(|r| (r.name.clone(), r.arg_sorts.clone()))
+        .collect::<HashMap<_, _>>();
+    let constructor_sigs = program
+        .data_decls
+        .iter()
+        .flat_map(|d| {
+            d.constructors.iter().map(move |ctor| {
+                (
+                    ctor.name.clone(),
+                    ConstructorSig {
+                        owner: d.name.clone(),
+                        fields: ctor.fields.clone(),
+                    },
+                )
+            })
+        })
+        .collect::<HashMap<_, _>>();
+    let defn_indices = program
+        .defns
+        .iter()
+        .enumerate()
+        .map(|(idx, defn)| (defn.name.clone(), idx))
+        .collect::<HashMap<_, _>>();
+
+    Some(SemanticDupContext {
+        program,
+        derived,
+        universe,
+        relation_schemas,
+        constructor_sigs,
+        defn_indices,
+    })
+}
+
+fn semantic_dup_confidence(evidence: SemanticDupEvidence) -> f64 {
+    let coverage = if evidence.model_points == 0 {
+        0.0
+    } else {
+        evidence.checked_points as f64 / evidence.model_points as f64
+    };
+    let search_strength = if evidence.checked_points == 0 {
+        0.0
+    } else {
+        1.0 - (1.0 / (evidence.checked_points as f64 + 1.0))
+    };
+    let counterexample_factor = if evidence.counterexample_found {
+        0.0
+    } else {
+        1.0
+    };
+    let raw = 0.10 + (0.35 * coverage) + (0.35 * search_strength) + (0.20 * counterexample_factor);
+    ((raw.clamp(0.0, 0.99) * 100.0).round()) / 100.0
+}
+
+fn build_universe_values(program: &Program) -> Option<HashMap<String, Vec<Value>>> {
+    let mut out = HashMap::new();
+    for universe in &program.universes {
+        let mut vals = BTreeSet::new();
+        for term in &universe.values {
+            vals.insert(logic_term_to_const_value(term)?);
+        }
+        if vals.is_empty() {
+            return None;
+        }
+        out.insert(universe.ty_name.clone(), vals.into_iter().collect());
+    }
+    Some(out)
+}
+
+fn assertions_semantic_evidence(
+    a: &AssertDecl,
+    b: &AssertDecl,
+    ctx: &SemanticDupContext<'_>,
+) -> Option<SemanticDupEvidence> {
+    let tuples = enumerate_param_tuples(&a.params, &ctx.universe)?;
+    let total = tuples.len();
+    let mut checked = 0usize;
+
+    for tuple in tuples {
+        let env_a = bind_params(&a.params, &tuple);
+        let env_b = bind_params(&b.params, &tuple);
+        checked += 1;
+        let a_ok = eval_formula_with_env(&a.formula, &ctx.derived, &env_a);
+        let b_ok = eval_formula_with_env(&b.formula, &ctx.derived, &env_b);
+        if a_ok != b_ok {
+            return Some(SemanticDupEvidence {
+                model_points: total,
+                checked_points: checked,
+                counterexample_found: true,
+            });
+        }
+    }
+    Some(SemanticDupEvidence {
+        model_points: total,
+        checked_points: checked,
+        counterexample_found: false,
+    })
+}
+
+fn rules_semantic_evidence(
+    a: &Rule,
+    b: &Rule,
+    ctx: &SemanticDupContext<'_>,
+) -> Option<SemanticDupEvidence> {
+    let lhs = rule_head_tuples(a, ctx)?;
+    let rhs = rule_head_tuples(b, ctx)?;
+    Some(SemanticDupEvidence {
+        model_points: lhs.total_valuations.max(rhs.total_valuations),
+        checked_points: lhs.evaluated_valuations.min(rhs.evaluated_valuations),
+        counterexample_found: lhs.tuples != rhs.tuples,
+    })
+}
+
+#[derive(Debug)]
+struct RuleHeadSummary {
+    tuples: BTreeSet<Vec<Value>>,
+    total_valuations: usize,
+    evaluated_valuations: usize,
+}
+
+fn rule_head_tuples(rule: &Rule, ctx: &SemanticDupContext<'_>) -> Option<RuleHeadSummary> {
+    let vars = infer_rule_var_types(rule, &ctx.relation_schemas, &ctx.constructor_sigs)?;
+    let valuations = enumerate_named_valuations(&vars, &ctx.universe)?;
+    let total_valuations = valuations.len();
+    let mut evaluated_valuations = 0usize;
+    let mut out = BTreeSet::new();
+
+    for valuation in valuations {
+        if !eval_formula_with_env(&rule.body, &ctx.derived, &valuation) {
+            evaluated_valuations += 1;
+            continue;
+        }
+        let Some(tuple) = instantiate_terms(&rule.head.terms, &valuation) else {
+            continue;
+        };
+        evaluated_valuations += 1;
+        out.insert(tuple);
+    }
+    Some(RuleHeadSummary {
+        tuples: out,
+        total_valuations,
+        evaluated_valuations,
+    })
+}
+
+fn infer_rule_var_types(
+    rule: &Rule,
+    relation_schemas: &HashMap<String, Vec<String>>,
+    constructor_sigs: &HashMap<String, ConstructorSig>,
+) -> Option<Vec<(String, String)>> {
+    let mut vars = HashMap::new();
+    infer_atom_var_types(&rule.head, relation_schemas, constructor_sigs, &mut vars)?;
+    infer_formula_var_types(&rule.body, relation_schemas, constructor_sigs, &mut vars)?;
+    let mut out = vars.into_iter().collect::<Vec<_>>();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(out)
+}
+
+fn infer_formula_var_types(
+    formula: &Formula,
+    relation_schemas: &HashMap<String, Vec<String>>,
+    constructor_sigs: &HashMap<String, ConstructorSig>,
+    vars: &mut HashMap<String, String>,
+) -> Option<()> {
+    match formula {
+        Formula::True => Some(()),
+        Formula::Atom(atom) => infer_atom_var_types(atom, relation_schemas, constructor_sigs, vars),
+        Formula::And(items) => {
+            for item in items {
+                infer_formula_var_types(item, relation_schemas, constructor_sigs, vars)?;
+            }
+            Some(())
+        }
+        Formula::Not(inner) => {
+            infer_formula_var_types(inner, relation_schemas, constructor_sigs, vars)
+        }
+    }
+}
+
+fn infer_atom_var_types(
+    atom: &Atom,
+    relation_schemas: &HashMap<String, Vec<String>>,
+    constructor_sigs: &HashMap<String, ConstructorSig>,
+    vars: &mut HashMap<String, String>,
+) -> Option<()> {
+    let schema = relation_schemas.get(&atom.pred)?;
+    if schema.len() != atom.terms.len() {
+        return None;
+    }
+
+    for (term, expected) in atom.terms.iter().zip(schema.iter()) {
+        infer_term_var_types(term, expected, constructor_sigs, vars)?;
+    }
+    Some(())
+}
+
+fn infer_term_var_types(
+    term: &LogicTerm,
+    expected: &str,
+    constructor_sigs: &HashMap<String, ConstructorSig>,
+    vars: &mut HashMap<String, String>,
+) -> Option<()> {
+    match term {
+        LogicTerm::Var(name) => {
+            if let Some(prev) = vars.get(name) {
+                if prev != expected {
+                    return None;
+                }
+            } else {
+                vars.insert(name.clone(), expected.to_string());
+            }
+            Some(())
+        }
+        LogicTerm::Symbol(_) => (expected == "Symbol").then_some(()),
+        LogicTerm::Int(_) => (expected == "Int").then_some(()),
+        LogicTerm::Bool(_) => (expected == "Bool").then_some(()),
+        LogicTerm::Ctor { name, args } => {
+            let sig = constructor_sigs.get(name)?;
+            if sig.owner != expected || sig.fields.len() != args.len() {
+                return None;
+            }
+            for (arg, field_ty) in args.iter().zip(sig.fields.iter()) {
+                let key = type_key(field_ty)?;
+                infer_term_var_types(arg, &key, constructor_sigs, vars)?;
+            }
+            Some(())
+        }
+    }
+}
+
+fn defns_semantic_evidence(
+    a: &Defn,
+    b: &Defn,
+    ctx: &SemanticDupContext<'_>,
+) -> Option<SemanticDupEvidence> {
+    let tuples = enumerate_param_tuples(&a.params, &ctx.universe)?;
+    let total = tuples.len();
+    let mut checked = 0usize;
+
+    for tuple in tuples {
+        let left = eval_defn_with_tuple(a, &tuple, ctx, 0);
+        let right = eval_defn_with_tuple(b, &tuple, ctx, 0);
+        let (Some(left), Some(right)) = (left, right) else {
+            continue;
+        };
+        checked += 1;
+        if left != right {
+            return Some(SemanticDupEvidence {
+                model_points: total,
+                checked_points: checked,
+                counterexample_found: true,
+            });
+        }
+    }
+    Some(SemanticDupEvidence {
+        model_points: total,
+        checked_points: checked,
+        counterexample_found: false,
+    })
+}
+
+const MAX_EVAL_DEPTH: usize = 256;
+
+fn eval_defn_with_tuple(
+    defn: &Defn,
+    tuple: &[Value],
+    ctx: &SemanticDupContext<'_>,
+    depth: usize,
+) -> Option<Value> {
+    if defn.params.len() != tuple.len() {
+        return None;
+    }
+    let mut env = HashMap::new();
+    for (param, value) in defn.params.iter().zip(tuple.iter()) {
+        env.insert(param.name.clone(), value.clone());
+    }
+    eval_expr_with_env(&defn.body, &env, ctx, depth)
+}
+
+fn eval_expr_with_env(
+    expr: &Expr,
+    env: &HashMap<String, Value>,
+    ctx: &SemanticDupContext<'_>,
+    depth: usize,
+) -> Option<Value> {
+    if depth > MAX_EVAL_DEPTH {
+        return None;
+    }
+
+    match expr {
+        Expr::Var { name, .. } => env.get(name).cloned(),
+        Expr::Symbol { value, .. } => Some(Value::Symbol(value.clone())),
+        Expr::Int { value, .. } => Some(Value::Int(*value)),
+        Expr::Bool { value, .. } => Some(Value::Bool(*value)),
+        Expr::Call { name, args, .. } => {
+            let mut values = Vec::new();
+            for arg in args {
+                values.push(eval_expr_with_env(arg, env, ctx, depth + 1)?);
+            }
+
+            if let Some(idx) = ctx.defn_indices.get(name).copied() {
+                let defn = &ctx.program.defns[idx];
+                return eval_defn_with_tuple(defn, &values, ctx, depth + 1);
+            }
+            if ctx.constructor_sigs.contains_key(name) {
+                return Some(Value::Adt {
+                    ctor: name.clone(),
+                    fields: values,
+                });
+            }
+            if let Some(schema) = ctx.relation_schemas.get(name) {
+                if schema.len() != values.len() {
+                    return None;
+                }
+                let exists = ctx
+                    .derived
+                    .facts
+                    .get(name)
+                    .map(|set| set.contains(&values))
+                    .unwrap_or(false);
+                return Some(Value::Bool(exists));
+            }
+            None
+        }
+        Expr::Let { bindings, body, .. } => {
+            let mut local = env.clone();
+            for (name, bexpr, _) in bindings {
+                let value = eval_expr_with_env(bexpr, &local, ctx, depth + 1)?;
+                local.insert(name.clone(), value);
+            }
+            eval_expr_with_env(body, &local, ctx, depth + 1)
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let cond_value = eval_expr_with_env(cond, env, ctx, depth + 1)?;
+            match cond_value {
+                Value::Bool(true) => eval_expr_with_env(then_branch, env, ctx, depth + 1),
+                Value::Bool(false) => eval_expr_with_env(else_branch, env, ctx, depth + 1),
+                _ => None,
+            }
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            let target = eval_expr_with_env(scrutinee, env, ctx, depth + 1)?;
+            for arm in arms {
+                let mut captures = HashMap::new();
+                if !matches_pattern(&arm.pattern, &target, &mut captures) {
+                    continue;
+                }
+                let mut local = env.clone();
+                for (name, value) in captures {
+                    local.insert(name, value);
+                }
+                return eval_expr_with_env(&arm.body, &local, ctx, depth + 1);
+            }
+            None
+        }
+    }
+}
+
+fn matches_pattern(pattern: &Pattern, target: &Value, binds: &mut HashMap<String, Value>) -> bool {
+    match pattern {
+        Pattern::Wildcard { .. } => true,
+        Pattern::Var { name, .. } => {
+            if let Some(prev) = binds.get(name) {
+                prev == target
+            } else {
+                binds.insert(name.clone(), target.clone());
+                true
+            }
+        }
+        Pattern::Symbol { value, .. } => matches!(target, Value::Symbol(s) if s == value),
+        Pattern::Int { value, .. } => matches!(target, Value::Int(i) if i == value),
+        Pattern::Bool { value, .. } => matches!(target, Value::Bool(b) if b == value),
+        Pattern::Ctor { name, args, .. } => {
+            let Value::Adt { ctor, fields } = target else {
+                return false;
+            };
+            if name != ctor || args.len() != fields.len() {
+                return false;
+            }
+            for (p, value) in args.iter().zip(fields.iter()) {
+                if !matches_pattern(p, value, binds) {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn eval_formula_with_env(
+    formula: &Formula,
+    derived: &DerivedFacts,
+    env: &HashMap<String, Value>,
+) -> bool {
+    match formula {
+        Formula::True => true,
+        Formula::Atom(atom) => {
+            let Some(tuple) = instantiate_terms(&atom.terms, env) else {
+                return false;
+            };
+            derived
+                .facts
+                .get(&atom.pred)
+                .map(|set| set.contains(&tuple))
+                .unwrap_or(false)
+        }
+        Formula::And(items) => items
+            .iter()
+            .all(|item| eval_formula_with_env(item, derived, env)),
+        Formula::Not(inner) => !eval_formula_with_env(inner, derived, env),
+    }
+}
+
+fn bind_params(params: &[Param], values: &[Value]) -> HashMap<String, Value> {
+    params
+        .iter()
+        .zip(values.iter())
+        .map(|(param, value)| (param.name.clone(), value.clone()))
+        .collect()
+}
+
+fn enumerate_param_tuples(
+    params: &[Param],
+    universe: &HashMap<String, Vec<Value>>,
+) -> Option<Vec<Vec<Value>>> {
+    let mut domains = Vec::new();
+    for param in params {
+        let key = type_key(&param.ty)?;
+        let values = universe.get(&key)?;
+        if values.is_empty() {
+            return None;
+        }
+        domains.push(values.clone());
+    }
+
+    let mut out = Vec::new();
+    enumerate_tuples(&domains, 0, &mut Vec::new(), &mut out);
+    Some(out)
+}
+
+fn enumerate_tuples(
+    domains: &[Vec<Value>],
+    idx: usize,
+    current: &mut Vec<Value>,
+    out: &mut Vec<Vec<Value>>,
+) {
+    if idx == domains.len() {
+        out.push(current.clone());
+        return;
+    }
+
+    for value in &domains[idx] {
+        current.push(value.clone());
+        enumerate_tuples(domains, idx + 1, current, out);
+        current.pop();
+    }
+}
+
+fn enumerate_named_valuations(
+    vars: &[(String, String)],
+    universe: &HashMap<String, Vec<Value>>,
+) -> Option<Vec<HashMap<String, Value>>> {
+    let mut domains = Vec::new();
+    for (name, key) in vars {
+        let values = universe.get(key)?;
+        if values.is_empty() {
+            return None;
+        }
+        domains.push((name.clone(), values.clone()));
+    }
+
+    let mut out = Vec::new();
+    enumerate_named(&domains, 0, &mut HashMap::new(), &mut out);
+    Some(out)
+}
+
+fn enumerate_named(
+    domains: &[(String, Vec<Value>)],
+    idx: usize,
+    current: &mut HashMap<String, Value>,
+    out: &mut Vec<HashMap<String, Value>>,
+) {
+    if idx == domains.len() {
+        out.push(current.clone());
+        return;
+    }
+
+    let (name, values) = &domains[idx];
+    for value in values {
+        current.insert(name.clone(), value.clone());
+        enumerate_named(domains, idx + 1, current, out);
+    }
+}
+
+fn instantiate_terms(terms: &[LogicTerm], env: &HashMap<String, Value>) -> Option<Vec<Value>> {
+    terms
+        .iter()
+        .map(|term| instantiate_term(term, env))
+        .collect::<Option<Vec<_>>>()
+}
+
+fn instantiate_term(term: &LogicTerm, env: &HashMap<String, Value>) -> Option<Value> {
+    match term {
+        LogicTerm::Var(name) => env.get(name).cloned(),
+        LogicTerm::Symbol(s) => Some(Value::Symbol(s.clone())),
+        LogicTerm::Int(i) => Some(Value::Int(*i)),
+        LogicTerm::Bool(b) => Some(Value::Bool(*b)),
+        LogicTerm::Ctor { name, args } => {
+            let fields = args
+                .iter()
+                .map(|arg| instantiate_term(arg, env))
+                .collect::<Option<Vec<_>>>()?;
+            Some(Value::Adt {
+                ctor: name.clone(),
+                fields,
+            })
+        }
+    }
+}
+
+fn logic_term_to_const_value(term: &LogicTerm) -> Option<Value> {
+    match term {
+        LogicTerm::Var(_) => None,
+        LogicTerm::Symbol(s) => Some(Value::Symbol(s.clone())),
+        LogicTerm::Int(i) => Some(Value::Int(*i)),
+        LogicTerm::Bool(b) => Some(Value::Bool(*b)),
+        LogicTerm::Ctor { name, args } => {
+            let fields = args
+                .iter()
+                .map(logic_term_to_const_value)
+                .collect::<Option<Vec<_>>>()?;
+            Some(Value::Adt {
+                ctor: name.clone(),
+                fields,
+            })
+        }
+    }
+}
+
+fn type_key(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Bool => Some("Bool".to_string()),
+        Type::Int => Some("Int".to_string()),
+        Type::Symbol => Some("Symbol".to_string()),
+        Type::Domain(name) | Type::Adt(name) => Some(name.clone()),
+        Type::Refine { base, .. } => type_key(base),
+        Type::Fun(_, _) => None,
+    }
+}
+
 fn missing_universe_types(program: &Program) -> Option<Vec<String>> {
     let declared = program
         .universes
@@ -277,6 +886,11 @@ fn missing_universe_types(program: &Program) -> Option<Vec<String>> {
         .map(|u| u.ty_name.clone())
         .collect::<HashSet<_>>();
     let mut required = HashSet::new();
+    for relation in &program.relations {
+        for sort in &relation.arg_sorts {
+            required.insert(sort.clone());
+        }
+    }
     for assertion in &program.asserts {
         for p in &assertion.params {
             collect_type_keys(&p.ty, &mut required);
@@ -781,106 +1395,5 @@ fn normalize_pattern(
                 .join(" ");
             format!("({name} {inner})")
         }
-    }
-}
-
-fn skeleton_formula(formula: &Formula) -> String {
-    match formula {
-        Formula::True => "true".to_string(),
-        Formula::Atom(atom) => {
-            let terms = atom
-                .terms
-                .iter()
-                .map(skeleton_logic_term)
-                .collect::<Vec<_>>()
-                .join(",");
-            format!("P({terms})")
-        }
-        Formula::And(items) => {
-            let mut parts = items.iter().map(skeleton_formula).collect::<Vec<_>>();
-            parts.sort();
-            format!("AND({})", parts.join(","))
-        }
-        Formula::Not(inner) => format!("NOT({})", skeleton_formula(inner)),
-    }
-}
-
-fn skeleton_logic_term(term: &LogicTerm) -> String {
-    match term {
-        LogicTerm::Var(_) => "V".to_string(),
-        LogicTerm::Symbol(_) => "S".to_string(),
-        LogicTerm::Int(_) => "I".to_string(),
-        LogicTerm::Bool(_) => "B".to_string(),
-        LogicTerm::Ctor { args, .. } => format!(
-            "C({})",
-            args.iter()
-                .map(skeleton_logic_term)
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-    }
-}
-
-fn skeleton_expr(expr: &Expr) -> String {
-    match expr {
-        Expr::Var { .. } => "V".to_string(),
-        Expr::Symbol { .. } => "S".to_string(),
-        Expr::Int { .. } => "I".to_string(),
-        Expr::Bool { .. } => "B".to_string(),
-        Expr::Call { args, .. } => format!(
-            "CALL({})",
-            args.iter().map(skeleton_expr).collect::<Vec<_>>().join(",")
-        ),
-        Expr::Let { bindings, body, .. } => format!(
-            "LET({};{})",
-            bindings
-                .iter()
-                .map(|(_, e, _)| skeleton_expr(e))
-                .collect::<Vec<_>>()
-                .join(","),
-            skeleton_expr(body)
-        ),
-        Expr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => format!(
-            "IF({},{},{})",
-            skeleton_expr(cond),
-            skeleton_expr(then_branch),
-            skeleton_expr(else_branch)
-        ),
-        Expr::Match {
-            scrutinee, arms, ..
-        } => format!(
-            "MATCH({};{})",
-            skeleton_expr(scrutinee),
-            arms.iter()
-                .map(|a| format!(
-                    "A({},{})",
-                    skeleton_pattern(&a.pattern),
-                    skeleton_expr(&a.body)
-                ))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-    }
-}
-
-fn skeleton_pattern(pattern: &Pattern) -> String {
-    match pattern {
-        Pattern::Wildcard { .. } => "_".to_string(),
-        Pattern::Var { .. } => "V".to_string(),
-        Pattern::Symbol { .. } => "S".to_string(),
-        Pattern::Int { .. } => "I".to_string(),
-        Pattern::Bool { .. } => "B".to_string(),
-        Pattern::Ctor { args, .. } => format!(
-            "C({})",
-            args.iter()
-                .map(skeleton_pattern)
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
     }
 }

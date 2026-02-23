@@ -88,3 +88,34 @@ fn parser_rejects_surface_data_without_required_tag() {
             .any(|d| d.message.contains("data expects tagged constructors"))
     );
 }
+
+#[test]
+fn parser_rejects_auto_mode_mixed_core_and_surface_with_dedicated_code() {
+    let src = r#"
+        (sort Subject)
+        (relation allowed (Subject))
+        (事実 allowed :項 (alice))
+    "#;
+
+    let errs = parse_program(src).expect_err("auto mode mixed syntax should fail");
+    assert!(errs.iter().any(|d| d.code == "E-SYNTAX-AUTO"));
+    assert!(
+        errs.iter()
+            .any(|d| d.message.contains("syntax:auto 判定衝突"))
+    );
+}
+
+#[test]
+fn parser_accepts_syntax_auto_pragma_when_surface_is_consistent() {
+    let src = r#"
+        ; syntax: auto
+        (型 主体)
+        (関係 契約可能 :引数 (主体))
+        (事実 契約可能 :項 (山田))
+    "#;
+
+    let program = parse_program(src).expect("syntax:auto with consistent surface should parse");
+    assert_eq!(program.sorts.len(), 1);
+    assert_eq!(program.relations.len(), 1);
+    assert_eq!(program.facts.len(), 1);
+}

@@ -45,6 +45,14 @@
   (if x true false))
 ```
 
+### 3.5 `E-SYNTAX-AUTO`
+- 症状: `syntax:auto 判定衝突` で parse が停止する。
+- 原因: 同一ファイル内に Core 形式（例: `(relation p (Subject))`）と Surface 形式（例: `(関係 p :引数 (主体))`）が混在。
+- 対処:
+1. ファイル全体を Core か Surface のどちらかに統一する。
+2. 暫定運用では先頭に `; syntax: core` または `; syntax: surface` を明示する。
+3. 混在を維持したい場合はファイル分割し、`import` で統合する。
+
 ---
 
 ## 4. `E-RESOLVE`
@@ -268,17 +276,19 @@
 ## 11. `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE`（lint warning）
 
 ### 11.1 典型症状
-- `L-DUP-MAYBE`: 近似同値の重複候補
+- `L-DUP-MAYBE`: 有限モデル上で同値の重複候補
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
 
 ### 11.2 主な原因
-- 変数名や構文だけ異なる同型ロジック
+- `rule/assert` が有限モデル上で双方向含意になる
+- `defn` が全入力で同じ戻り値を返す
 - `--semantic-dup` 実行時に universe が不足
 
 ### 11.3 確認手順
 1. `--semantic-dup` を付けた実行か確認する。
 2. `L-DUP-SKIP-UNIVERSE` が出る場合は不足型の `universe` を追加する。
-3. `L-DUP-MAYBE` は誤検知可能性があるため、意図重複か設計重複かをレビューする。
+3. `L-DUP-MAYBE` は `confidence`（0.00〜0.99）を併せて確認し、低スコアは追加検証（universe 拡張・反例作成）を行う。
+4. 厳密判定の再現には `examples/semantic_dup_advanced.dtl` を使い、`rule/assert/defn` の3種別で検証する。
 
 ---
 

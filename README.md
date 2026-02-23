@@ -7,10 +7,14 @@
 
 - 静的検査: 型整合・層化否定・`match` 網羅性・全域性（構造再帰判定）
 - lint: 重複候補検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）
+  - `L-DUP-MAYBE` は有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）
+  - `confidence` はモデルカバレッジ + 反例探索結果に基づく動的スコア（0.00-0.99）
 - format: Surface 形式への正規化整形（in-place / check / stdout）
+  - `@context` ブロックを保持し、複数コンテキストでも idempotent 整形
 - 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
 - ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力（`--pdf` 対応）
 - 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は非正規化・エスケープ非解釈）
+- `syntax: auto` は Core/Surface 混在を検知すると `E-SYNTAX-AUTO` を返す
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
 
 ## クイックスタート
@@ -27,6 +31,16 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_json --format json
 # 日本語ドメイン型サンプル
 cargo run -- check examples/customer_contract_ja.dtl
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
+
+# 複雑シナリオ（マルチファイル + Surface + 複数 @context + prove/doc）
+cargo run -- check examples/complex_policy_import_entry.dtl --format json
+cargo run -- prove examples/complex_policy_import_entry.dtl --format json --out out_complex
+
+# semantic duplicate 厳密判定サンプル
+cargo run -- lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
+
+# ネスト match + let alias 構造再帰サンプル
+cargo run -- check examples/recursive_nested_ok.dtl --format json
 ```
 
 ## CLI
@@ -86,6 +100,7 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 - [v0.2 移行ガイド（v0.4 追補）](docs/migration-v0.2.md)
 - [検証計画](docs/verification-plan.md)
 - [テストマトリクス](docs/test-matrix.md)
+- [複雑シナリオ集](docs/example-scenarios-ja.md)
 - [v0.3 停止性解析設計](docs/termination-analysis-v0.3.md)
 - [ADT Parametric 化評価 v0.3](docs/adt-parametric-evaluation-v0.3.md)
 - [ADR 0001: import 名前空間と公開制御](docs/adr/0001-import-namespace.md)

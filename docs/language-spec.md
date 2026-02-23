@@ -12,7 +12,8 @@
 - `import` で複数ファイルを連結し、単一 `Program` として検査する。
 - 識別子（sort/data/relation/defn 名、定数など）は Unicode を許可する。
 - Atom は NFC へ正規化して解釈する（`import` の引用符付きパス文字列は正規化しない）。
-- `; syntax: core|surface` pragma で構文モードを明示できる。省略時は auto 判定。
+- `; syntax: core|surface|auto` pragma で構文モードを明示できる。省略時は auto 判定。
+- auto 判定で Core/Surface の同一ファイル混在を検知した場合は `E-SYNTAX-AUTO` で失敗する。
 - Surface は日英キーワードエイリアスを受理する（例: `sort`/`型`）。
 
 ### 1.1 Atom 正規化境界（引用符・エスケープ）
@@ -33,6 +34,7 @@
   - 重複検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）を警告として出力する。
 - `dtl fmt <FILE>... [--check] [--stdout]`
   - AST 正規化 + Surface 形式レンダリングを行う。既定は in-place 更新。
+  - `; @context:` をブロック単位で保持し、複数コンテキストでも安定整形（idempotent）を保証する。
 
 ### 2.1 diagnostics（`--format json`）
 - エラー時は `status = "error"` と `diagnostics` 配列を返す。
@@ -184,6 +186,7 @@ term = var | symbol | int | bool | (Ctor term*)
 - `E-IO`: 入出力エラー
 - `E-IMPORT`: import 解決エラー
 - `E-PARSE`: 構文エラー
+- `E-SYNTAX-AUTO`: auto 構文判定衝突（Core/Surface 混在）
 - `E-RESOLVE`: 名前解決エラー
 - `E-STRATIFY`: 層化違反
 - `E-TYPE`: 型エラー
@@ -195,6 +198,12 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 10. lint コード
 - `L-DUP-EXACT`: 構文正規化後に確定重複
-- `L-DUP-MAYBE`: 近似同値判定による重複候補
+- `L-DUP-MAYBE`: 有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）による重複候補
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定を universe 不足でスキップ
 - `L-UNUSED-DECL`: 未使用宣言
+
+`L-DUP-MAYBE`/`L-DUP-SKIP-UNIVERSE` の判定前提:
+- `--semantic-dup` 指定時のみ実行する。
+- 必須 `universe` は relation 引数型 + `assert/defn` 量化変数型を合成して決定する。
+- `confidence` はモデルカバレッジ（`checked_points / model_points`）と反例探索結果（counterexample 有無）から算出する。
+- 出力範囲は `0.00`〜`0.99`（小数第2位丸め）。

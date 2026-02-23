@@ -13,14 +13,19 @@
 - [x] `lint/fmt/doc-pdf` の統合テストを追加する。
 
 ## P1（厳密化・運用）
-- [ ] `L-DUP-MAYBE` を近似スケルトン判定から、有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）へ厳密化する。
-- [ ] `fmt` の `@context` 単位ブロック保持を強化し、複数コンテキストでの安定整形（idempotent）テストを追加する。
+- [x] `L-DUP-MAYBE` を近似スケルトン判定から、有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）へ厳密化する。
+- [x] `fmt` の `@context` 単位ブロック保持を強化し、複数コンテキストでの安定整形（idempotent）テストを追加する。
 - [x] `docs/migration-v0.2.md` と `docs/troubleshooting-errors-ja.md` に v0.4（`lint/fmt/surface/doc --pdf`）の移行・障害対応を追記する。
-- [ ] CI に `dtl lint --deny-warnings` と `dtl fmt --check` を専用ジョブとして追加する。
+- [x] CI に `dtl lint --deny-warnings` と `dtl fmt --check` を専用ジョブとして追加する。
 
 ## P2（将来）
-- [ ] `L-DUP-MAYBE` の `confidence` 算出を、モデルカバレッジと反例探索結果に基づく指標へ更新する。
-- [ ] Surface 構文の `syntax: auto` 判定衝突ケース（同一ファイル内混在）の診断を改善する（専用コード化）。
+- [x] `L-DUP-MAYBE` の `confidence` 算出を、モデルカバレッジと反例探索結果に基づく指標へ更新する。
+- [x] Surface 構文の `syntax: auto` 判定衝突ケース（同一ファイル内混在）の診断を改善する（専用コード化）。
+
+## P3（現時点の課題）
+- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` を通す（現状: `src/fmt.rs` の `collapsible_if` 指摘で失敗）。
+- [ ] `--semantic-dup` で function 型パラメータを含む `defn` の同値比較を可能にする（現状は比較スキップ）。
+- [ ] `--semantic-dup` の `defn` 同値評価で深い再帰を安全に扱えるようにする（`MAX_EVAL_DEPTH=256` 依存を緩和/可視化）。
 
 ## Archive: v0.2（完了済み）
 - [x] `check/prove/doc` を CI 必須ジョブに反映する。

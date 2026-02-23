@@ -133,3 +133,133 @@ fn e2e_example_import_entry_json_contract_is_stable() {
     });
     assert_eq!(actual, expected);
 }
+
+#[test]
+fn e2e_complex_policy_import_entry_check_and_prove_succeeds() {
+    let entry = example_path("complex_policy_import_entry.dtl");
+
+    let mut check_cmd = cargo_bin_cmd!("dtl");
+    let check_output = check_cmd
+        .arg("check")
+        .arg(&entry)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        check_output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let check_actual: Value = serde_json::from_slice(&check_output.stdout).expect("valid json");
+    assert_eq!(check_actual["status"], "ok");
+    assert_eq!(check_actual["report"]["functions_checked"], 2);
+
+    let out_dir = std::env::temp_dir().join("dtl_e2e_complex_policy_out");
+    if out_dir.exists() {
+        let _ = std::fs::remove_dir_all(&out_dir);
+    }
+
+    let mut prove_cmd = cargo_bin_cmd!("dtl");
+    let prove_output = prove_cmd
+        .arg("prove")
+        .arg(&entry)
+        .arg("--format")
+        .arg("json")
+        .arg("--out")
+        .arg(&out_dir)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        prove_output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let prove_actual: Value = serde_json::from_slice(&prove_output.stdout).expect("valid json");
+    assert_eq!(prove_actual["status"], "ok");
+    assert_eq!(
+        prove_actual["proof"]["obligations"]
+            .as_array()
+            .map(|v| v.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn e2e_semantic_dup_advanced_reports_strict_maybe_candidates() {
+    let path = example_path("semantic_dup_advanced.dtl");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let actual: Value = serde_json::from_slice(&output.stdout).expect("valid json");
+    assert_eq!(actual["status"], "ok");
+    let diagnostics = actual["diagnostics"].as_array().expect("array");
+    assert_eq!(diagnostics.len(), 3);
+    assert!(diagnostics.iter().all(|d| d["lint_code"] == "L-DUP-MAYBE"));
+}
+
+#[test]
+fn e2e_recursive_nested_ok_check_and_prove_succeeds() {
+    let path = example_path("recursive_nested_ok.dtl");
+
+    let mut check_cmd = cargo_bin_cmd!("dtl");
+    let check_output = check_cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        check_output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let check_actual: Value = serde_json::from_slice(&check_output.stdout).expect("valid json");
+    assert_eq!(check_actual["status"], "ok");
+    assert_eq!(check_actual["report"]["functions_checked"], 1);
+
+    let out_dir = std::env::temp_dir().join("dtl_e2e_recursive_nested_out");
+    if out_dir.exists() {
+        let _ = std::fs::remove_dir_all(&out_dir);
+    }
+
+    let mut prove_cmd = cargo_bin_cmd!("dtl");
+    let prove_output = prove_cmd
+        .arg("prove")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .arg("--out")
+        .arg(&out_dir)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        prove_output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let prove_actual: Value = serde_json::from_slice(&prove_output.stdout).expect("valid json");
+    assert_eq!(prove_actual["status"], "ok");
+}

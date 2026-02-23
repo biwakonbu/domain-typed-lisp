@@ -116,6 +116,178 @@ fn cli_lint_semantic_dup_reports_universe_skip() {
 }
 
 #[test]
+fn cli_lint_semantic_dup_detects_assert_rule_defn_equivalence() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("semantic_equivalent.dtl");
+    fs::write(
+        &src,
+        r#"
+        (sort Subject)
+        (relation base (Subject))
+        (relation allowed (Subject))
+        (fact base alice)
+        (fact base bob)
+
+        (rule (allowed ?x) (and (base ?x) true))
+        (rule (allowed ?y) (base ?y))
+
+        (assert a ((u Subject)) (and (allowed u) true))
+        (assert b ((v Subject)) (allowed v))
+
+        (defn can1 ((u Subject)) Bool (allowed u))
+        (defn can2 ((x Subject)) Bool (if true (allowed x) false))
+
+        (universe Subject (alice bob))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    let diags = value["diagnostics"].as_array().expect("array");
+    assert!(diags.iter().any(|d| {
+        d["lint_code"] == "L-DUP-MAYBE"
+            && d["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("assert a と b")
+    }));
+    assert!(diags.iter().any(|d| {
+        d["lint_code"] == "L-DUP-MAYBE"
+            && d["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("rule allowed")
+    }));
+    assert!(diags.iter().any(|d| {
+        d["lint_code"] == "L-DUP-MAYBE"
+            && d["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("defn can1 と can2")
+    }));
+}
+
+#[test]
+fn cli_lint_semantic_dup_does_not_report_non_equivalent_defn() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("semantic_not_equivalent.dtl");
+    fs::write(
+        &src,
+        r#"
+        (sort Subject)
+        (relation allowed (Subject))
+        (fact allowed alice)
+        (defn can1 ((u Subject)) Bool (allowed u))
+        (defn can2 ((u Subject)) Bool false)
+        (universe Subject (alice bob))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    let has_maybe = value["diagnostics"]
+        .as_array()
+        .map(|diags| diags.iter().any(|d| d["lint_code"] == "L-DUP-MAYBE"))
+        .unwrap_or(false);
+    assert!(!has_maybe);
+}
+
+#[test]
+fn cli_lint_semantic_dup_confidence_scales_with_model_search() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("semantic_confidence_scaling.dtl");
+    fs::write(
+        &src,
+        r#"
+        (sort Subject)
+        (relation p (Subject))
+        (fact p a)
+        (fact p b)
+
+        (assert small_a ((u Subject)) (and (p u) true))
+        (assert small_b ((x Subject)) (p x))
+
+        (assert large_a ((u Subject) (v Subject)) (and (p u) true))
+        (assert large_b ((x Subject) (y Subject)) (p x))
+
+        (universe Subject (a b c))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    let diags = value["diagnostics"].as_array().expect("array");
+    let small_conf = diags
+        .iter()
+        .find(|d| {
+            d["lint_code"] == "L-DUP-MAYBE"
+                && d["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("assert small_a と small_b")
+        })
+        .and_then(|d| d["confidence"].as_f64())
+        .expect("small confidence");
+    let large_conf = diags
+        .iter()
+        .find(|d| {
+            d["lint_code"] == "L-DUP-MAYBE"
+                && d["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("assert large_a と large_b")
+        })
+        .and_then(|d| d["confidence"].as_f64())
+        .expect("large confidence");
+
+    assert!(small_conf > 0.0);
+    assert!(large_conf <= 0.99);
+    assert!(large_conf > small_conf);
+}
+
+#[test]
 fn cli_fmt_check_and_write() {
     let dir = tempdir().expect("tempdir");
     let src = dir.path().join("fmt_target.dtl");
@@ -151,6 +323,48 @@ fn cli_fmt_check_and_write() {
     let body = fs::read_to_string(&src).expect("read");
     assert!(body.contains("; syntax: surface"));
     assert!(body.contains("(型 Subject)"));
+}
+
+#[test]
+fn cli_fmt_preserves_multi_context_blocks_idempotently() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("fmt_multi_context.dtl");
+    fs::write(
+        &src,
+        r#"; syntax: surface
+; @context: sales
+(関係 sellable :引数 (商品))
+(型 商品)
+(事実 sellable :項 (本))
+
+; @context: support
+(型 チケット)
+(関係 open :引数 (チケット))
+(事実 open :項 (T1))
+"#,
+    )
+    .expect("write");
+
+    let mut first_fmt = cargo_bin_cmd!("dtl");
+    first_fmt.arg("fmt").arg(&src).assert().success();
+
+    let once = fs::read_to_string(&src).expect("read once");
+    assert_eq!(once.matches("; @context:").count(), 2);
+    assert!(once.contains("; @context: sales\n\n(型 商品)\n"));
+    assert!(once.contains("; @context: support\n\n(型 チケット)\n"));
+
+    let mut second_fmt = cargo_bin_cmd!("dtl");
+    second_fmt.arg("fmt").arg(&src).assert().success();
+    let twice = fs::read_to_string(&src).expect("read twice");
+    assert_eq!(once, twice);
+
+    let mut check_cmd = cargo_bin_cmd!("dtl");
+    check_cmd
+        .arg("fmt")
+        .arg(&src)
+        .arg("--check")
+        .assert()
+        .success();
 }
 
 #[test]

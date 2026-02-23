@@ -1,7 +1,12 @@
-use crate::ast::{Expr, Pattern};
+use crate::ast::{
+    AssertDecl, DataDecl, Defn, Expr, Fact, ImportDecl, Pattern, Program, RelationDecl, Rule,
+    SortDecl, UniverseDecl,
+};
 use crate::diagnostics::Diagnostic;
 use crate::parser::parse_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
+use std::iter::Peekable;
+use std::str::CharIndices;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FormatOptions {
@@ -17,41 +22,461 @@ impl Default for FormatOptions {
 }
 
 pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Diagnostic>> {
-    let mut program = parse_program(src)?;
-
-    program.imports.sort_by(|a, b| a.path.cmp(&b.path));
-    program.sorts.sort_by(|a, b| a.name.cmp(&b.name));
-    program.data_decls.sort_by(|a, b| a.name.cmp(&b.name));
-    program.relations.sort_by(|a, b| a.name.cmp(&b.name));
-    program.universes.sort_by(|a, b| a.ty_name.cmp(&b.ty_name));
+    let program = parse_program(src)?;
 
     let mut out = String::new();
     out.push_str("; syntax: surface\n");
 
     if options.preserve_context {
-        let contexts = collect_context_markers(src);
-        if !contexts.is_empty() {
-            out.push_str(&format!("; @context: {}\n\n", contexts[0]));
-        } else {
-            out.push_str("; @context: default\n\n");
+        render_with_context_blocks(program, src, &mut out);
+    } else {
+        let mut forms = ContextForms::from_program(program);
+        forms.sort_for_render();
+        render_forms(&forms, &mut out);
+    }
+
+    Ok(out.trim_end().to_string() + "\n")
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TopLevelKind {
+    Import,
+    Sort,
+    Data,
+    Relation,
+    Fact,
+    Rule,
+    Assert,
+    Universe,
+    Defn,
+}
+
+#[derive(Debug, Default)]
+struct ContextAssignments {
+    block_names: Vec<String>,
+    imports: Vec<Option<usize>>,
+    sorts: Vec<Option<usize>>,
+    data_decls: Vec<Option<usize>>,
+    relations: Vec<Option<usize>>,
+    facts: Vec<Option<usize>>,
+    rules: Vec<Option<usize>>,
+    asserts: Vec<Option<usize>>,
+    universes: Vec<Option<usize>>,
+    defns: Vec<Option<usize>>,
+}
+
+impl ContextAssignments {
+    fn push(&mut self, kind: TopLevelKind, block_idx: Option<usize>) {
+        match kind {
+            TopLevelKind::Import => self.imports.push(block_idx),
+            TopLevelKind::Sort => self.sorts.push(block_idx),
+            TopLevelKind::Data => self.data_decls.push(block_idx),
+            TopLevelKind::Relation => self.relations.push(block_idx),
+            TopLevelKind::Fact => self.facts.push(block_idx),
+            TopLevelKind::Rule => self.rules.push(block_idx),
+            TopLevelKind::Assert => self.asserts.push(block_idx),
+            TopLevelKind::Universe => self.universes.push(block_idx),
+            TopLevelKind::Defn => self.defns.push(block_idx),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct ContextForms {
+    imports: Vec<ImportDecl>,
+    sorts: Vec<SortDecl>,
+    data_decls: Vec<DataDecl>,
+    relations: Vec<RelationDecl>,
+    facts: Vec<Fact>,
+    rules: Vec<Rule>,
+    asserts: Vec<AssertDecl>,
+    universes: Vec<UniverseDecl>,
+    defns: Vec<Defn>,
+}
+
+impl ContextForms {
+    fn from_program(program: Program) -> Self {
+        Self {
+            imports: program.imports,
+            sorts: program.sorts,
+            data_decls: program.data_decls,
+            relations: program.relations,
+            facts: program.facts,
+            rules: program.rules,
+            asserts: program.asserts,
+            universes: program.universes,
+            defns: program.defns,
         }
     }
 
-    for import in &program.imports {
+    fn is_empty(&self) -> bool {
+        self.imports.is_empty()
+            && self.sorts.is_empty()
+            && self.data_decls.is_empty()
+            && self.relations.is_empty()
+            && self.facts.is_empty()
+            && self.rules.is_empty()
+            && self.asserts.is_empty()
+            && self.universes.is_empty()
+            && self.defns.is_empty()
+    }
+
+    fn sort_for_render(&mut self) {
+        self.imports.sort_by(|a, b| a.path.cmp(&b.path));
+        self.sorts.sort_by(|a, b| a.name.cmp(&b.name));
+        self.data_decls.sort_by(|a, b| a.name.cmp(&b.name));
+        self.relations.sort_by(|a, b| a.name.cmp(&b.name));
+        self.universes.sort_by(|a, b| a.ty_name.cmp(&b.ty_name));
+    }
+}
+
+fn render_with_context_blocks(program: Program, src: &str, out: &mut String) {
+    let Program {
+        imports,
+        sorts,
+        data_decls,
+        relations,
+        facts,
+        rules,
+        asserts,
+        universes,
+        defns,
+    } = program;
+
+    let assignments = collect_context_assignments(src);
+
+    let mut prelude = ContextForms::default();
+    let mut blocks = assignments
+        .block_names
+        .iter()
+        .map(|name| (name.clone(), ContextForms::default()))
+        .collect::<Vec<_>>();
+
+    assign_imports(imports, &assignments.imports, &mut prelude, &mut blocks);
+    assign_sorts(sorts, &assignments.sorts, &mut prelude, &mut blocks);
+    assign_data_decls(
+        data_decls,
+        &assignments.data_decls,
+        &mut prelude,
+        &mut blocks,
+    );
+    assign_relations(relations, &assignments.relations, &mut prelude, &mut blocks);
+    assign_facts(facts, &assignments.facts, &mut prelude, &mut blocks);
+    assign_rules(rules, &assignments.rules, &mut prelude, &mut blocks);
+    assign_asserts(asserts, &assignments.asserts, &mut prelude, &mut blocks);
+    assign_universes(universes, &assignments.universes, &mut prelude, &mut blocks);
+    assign_defns(defns, &assignments.defns, &mut prelude, &mut blocks);
+
+    prelude.sort_for_render();
+    for (_, forms) in &mut blocks {
+        forms.sort_for_render();
+    }
+
+    let mut emitted = false;
+    if blocks.is_empty() || !prelude.is_empty() {
+        out.push_str("; @context: default\n\n");
+        render_forms(&prelude, out);
+        emitted = true;
+    }
+
+    for (idx, (name, forms)) in blocks.iter().enumerate() {
+        if emitted || idx > 0 {
+            out.push('\n');
+        }
+        out.push_str(&format!("; @context: {name}\n\n"));
+        render_forms(forms, out);
+        emitted = true;
+    }
+}
+
+fn canonical_top_level_kind(head: &str) -> Option<TopLevelKind> {
+    match head {
+        "import" | "インポート" => Some(TopLevelKind::Import),
+        "sort" | "型" => Some(TopLevelKind::Sort),
+        "data" | "データ" => Some(TopLevelKind::Data),
+        "relation" | "関係" => Some(TopLevelKind::Relation),
+        "fact" | "事実" => Some(TopLevelKind::Fact),
+        "rule" | "規則" => Some(TopLevelKind::Rule),
+        "assert" | "検証" => Some(TopLevelKind::Assert),
+        "universe" | "宇宙" => Some(TopLevelKind::Universe),
+        "defn" | "関数" => Some(TopLevelKind::Defn),
+        _ => None,
+    }
+}
+
+fn collect_context_assignments(src: &str) -> ContextAssignments {
+    let mut out = ContextAssignments::default();
+    let mut current_block = None;
+    let mut it = src.char_indices().peekable();
+
+    while let Some((_, ch)) = it.next() {
+        if ch.is_whitespace() {
+            continue;
+        }
+        if ch == ';' {
+            let comment = consume_comment(&mut it);
+            if let Some(ctx) = parse_context_marker(&comment) {
+                out.block_names.push(ctx.to_string());
+                current_block = Some(out.block_names.len() - 1);
+            }
+            continue;
+        }
+        if ch != '(' {
+            continue;
+        }
+
+        let mut depth = 1usize;
+        let head = consume_head_atom(&mut it, &mut depth);
+        if let Some(kind) = canonical_top_level_kind(head.as_str()) {
+            out.push(kind, current_block);
+        }
+        consume_to_form_end(&mut it, &mut depth);
+    }
+
+    out
+}
+
+fn consume_comment(it: &mut Peekable<CharIndices<'_>>) -> String {
+    let mut out = String::new();
+    while let Some((_, ch)) = it.peek().copied() {
+        if ch == '\n' {
+            break;
+        }
+        out.push(ch);
+        it.next();
+    }
+    out
+}
+
+fn parse_context_marker(comment: &str) -> Option<&str> {
+    let body = comment.trim();
+    let ctx = body.strip_prefix("@context:")?;
+    let name = ctx.trim();
+    (!name.is_empty()).then_some(name)
+}
+
+fn consume_head_atom(it: &mut Peekable<CharIndices<'_>>, depth: &mut usize) -> String {
+    loop {
+        let Some((_, ch)) = it.peek().copied() else {
+            return String::new();
+        };
+        if ch.is_whitespace() {
+            it.next();
+            continue;
+        }
+        if ch == ';' {
+            it.next();
+            consume_comment(it);
+            continue;
+        }
+        if ch == '(' {
+            *depth += 1;
+            it.next();
+            return String::new();
+        }
+        if ch == ')' {
+            *depth = depth.saturating_sub(1);
+            it.next();
+            return String::new();
+        }
+
+        let mut atom = String::new();
+        while let Some((_, c)) = it.peek().copied() {
+            if c.is_whitespace() || c == '(' || c == ')' || c == ';' {
+                break;
+            }
+            atom.push(c);
+            it.next();
+        }
+        return atom;
+    }
+}
+
+fn consume_to_form_end(it: &mut Peekable<CharIndices<'_>>, depth: &mut usize) {
+    while *depth > 0 {
+        let Some((_, ch)) = it.next() else {
+            break;
+        };
+        match ch {
+            ';' => {
+                consume_comment(it);
+            }
+            '(' => *depth += 1,
+            ')' => *depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+}
+
+fn assign_imports(
+    items: Vec<ImportDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.imports.push(item);
+                continue;
+            }
+        }
+        prelude.imports.push(item);
+    }
+}
+
+fn assign_sorts(
+    items: Vec<SortDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.sorts.push(item);
+                continue;
+            }
+        }
+        prelude.sorts.push(item);
+    }
+}
+
+fn assign_data_decls(
+    items: Vec<DataDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.data_decls.push(item);
+                continue;
+            }
+        }
+        prelude.data_decls.push(item);
+    }
+}
+
+fn assign_relations(
+    items: Vec<RelationDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.relations.push(item);
+                continue;
+            }
+        }
+        prelude.relations.push(item);
+    }
+}
+
+fn assign_facts(
+    items: Vec<Fact>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.facts.push(item);
+                continue;
+            }
+        }
+        prelude.facts.push(item);
+    }
+}
+
+fn assign_rules(
+    items: Vec<Rule>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.rules.push(item);
+                continue;
+            }
+        }
+        prelude.rules.push(item);
+    }
+}
+
+fn assign_asserts(
+    items: Vec<AssertDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.asserts.push(item);
+                continue;
+            }
+        }
+        prelude.asserts.push(item);
+    }
+}
+
+fn assign_universes(
+    items: Vec<UniverseDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.universes.push(item);
+                continue;
+            }
+        }
+        prelude.universes.push(item);
+    }
+}
+
+fn assign_defns(
+    items: Vec<Defn>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
+            if let Some((_, forms)) = blocks.get_mut(block_idx) {
+                forms.defns.push(item);
+                continue;
+            }
+        }
+        prelude.defns.push(item);
+    }
+}
+
+fn render_forms(forms: &ContextForms, out: &mut String) {
+    for import in &forms.imports {
         out.push_str(&format!("(インポート \"{}\")\n", import.path));
     }
-    if !program.imports.is_empty() {
+    if !forms.imports.is_empty() {
         out.push('\n');
     }
 
-    for sort in &program.sorts {
+    for sort in &forms.sorts {
         out.push_str(&format!("(型 {})\n", sort.name));
     }
-    if !program.sorts.is_empty() {
+    if !forms.sorts.is_empty() {
         out.push('\n');
     }
 
-    for data in &program.data_decls {
+    for data in &forms.data_decls {
         let ctors = data
             .constructors
             .iter()
@@ -75,22 +500,22 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
             data.name, ctors
         ));
     }
-    if !program.data_decls.is_empty() {
+    if !forms.data_decls.is_empty() {
         out.push('\n');
     }
 
-    for relation in &program.relations {
+    for relation in &forms.relations {
         out.push_str(&format!(
             "(関係 {} :引数 ({}))\n",
             relation.name,
             relation.arg_sorts.join(" ")
         ));
     }
-    if !program.relations.is_empty() {
+    if !forms.relations.is_empty() {
         out.push('\n');
     }
 
-    for fact in &program.facts {
+    for fact in &forms.facts {
         let terms = fact
             .terms
             .iter()
@@ -99,22 +524,22 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
             .join(" ");
         out.push_str(&format!("(事実 {} :項 ({}))\n", fact.name, terms));
     }
-    if !program.facts.is_empty() {
+    if !forms.facts.is_empty() {
         out.push('\n');
     }
 
-    for rule in &program.rules {
+    for rule in &forms.rules {
         out.push_str(&format!(
             "(規則 :頭 {} :本体 {})\n",
             render_atom_rule(&rule.head),
             render_formula_rule(&rule.body)
         ));
     }
-    if !program.rules.is_empty() {
+    if !forms.rules.is_empty() {
         out.push('\n');
     }
 
-    for assertion in &program.asserts {
+    for assertion in &forms.asserts {
         let params = assertion
             .params
             .iter()
@@ -128,11 +553,11 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
             render_formula_refine(&assertion.formula)
         ));
     }
-    if !program.asserts.is_empty() {
+    if !forms.asserts.is_empty() {
         out.push('\n');
     }
 
-    for universe in &program.universes {
+    for universe in &forms.universes {
         let values = universe
             .values
             .iter()
@@ -141,11 +566,11 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
             .join(" ");
         out.push_str(&format!("(宇宙 {} :値 ({}))\n", universe.ty_name, values));
     }
-    if !program.universes.is_empty() {
+    if !forms.universes.is_empty() {
         out.push('\n');
     }
 
-    for defn in &program.defns {
+    for defn in &forms.defns {
         let params = defn
             .params
             .iter()
@@ -160,26 +585,6 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
             render_expr(&defn.body)
         ));
     }
-
-    Ok(out.trim_end().to_string() + "\n")
-}
-
-fn collect_context_markers(src: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in src.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with(';') {
-            continue;
-        }
-        let body = trimmed.trim_start_matches(';').trim();
-        if let Some(ctx) = body.strip_prefix("@context:") {
-            let value = ctx.trim();
-            if !value.is_empty() {
-                out.push(value.to_string());
-            }
-        }
-    }
-    out
 }
 
 fn render_type(ty: &Type) -> String {
