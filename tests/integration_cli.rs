@@ -266,6 +266,56 @@ fn cli_json_output_for_failure() {
 }
 
 #[test]
+fn cli_json_output_for_totality_error_has_machine_readable_fields() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("totality_ng_json.dtl");
+    fs::write(
+        &path,
+        r#"
+        (data Nat (z) (s Nat))
+        (defn bad ((n Nat)) Bool
+          (match n
+            ((z) true)
+            ((s m) (bad n))))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+
+    let total = value["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .find(|d| d["code"] == "E-TOTAL")
+        .expect("E-TOTAL diagnostics");
+
+    assert_eq!(total["reason"], "non_decreasing_argument");
+    assert_eq!(
+        total["arg_indices"]
+            .as_array()
+            .expect("arg_indices array")
+            .iter()
+            .map(|v| v.as_u64().expect("u64"))
+            .collect::<Vec<_>>(),
+        vec![1]
+    );
+}
+
+#[test]
 fn cli_json_output_for_multi_file_failure_has_per_file_source() {
     let dir = tempdir().expect("tempdir");
     let schema = dir.path().join("schema.dtl");

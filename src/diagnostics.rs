@@ -15,6 +15,8 @@ pub struct Diagnostic {
     pub message: String,
     pub span: Option<Span>,
     pub source: Option<String>,
+    pub reason: Option<&'static str>,
+    pub arg_indices: Option<Vec<usize>>,
 }
 
 impl Diagnostic {
@@ -24,6 +26,8 @@ impl Diagnostic {
             message: message.into(),
             span,
             source: None,
+            reason: None,
+            arg_indices: None,
         }
     }
 
@@ -38,6 +42,24 @@ impl Diagnostic {
 
     pub fn source(&self) -> Option<&str> {
         self.source.as_deref()
+    }
+
+    pub fn with_reason(mut self, reason: &'static str) -> Self {
+        self.reason = Some(reason);
+        self
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason
+    }
+
+    pub fn with_arg_indices(mut self, arg_indices: Vec<usize>) -> Self {
+        self.arg_indices = Some(arg_indices);
+        self
+    }
+
+    pub fn arg_indices(&self) -> Option<&[usize]> {
+        self.arg_indices.as_deref()
     }
 }
 
@@ -74,7 +96,9 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
         "E-ENTAIL" => {
             Some("Refinement の前提事実・規則を追加し、含意が導出可能か確認してください。")
         }
-        "E-TOTAL" => Some("再帰呼び出しを除去し、全関数（停止性保証）として定義してください。"),
+        "E-TOTAL" => Some(
+            "再帰は tail position かつ ADT 引数の構造減少が必要です。相互再帰は許可されません。",
+        ),
         "E-DATA" => Some("data 宣言の重複・再帰・constructor の整合性を確認してください。"),
         "E-MATCH" => Some("match の網羅性・到達不能分岐・パターン型整合性を確認してください。"),
         "E-PROVE" => Some("universe と証明義務を確認し、反例トレースを参照して修正してください。"),

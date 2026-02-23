@@ -1,9 +1,9 @@
-# 言語仕様（v0.2）
+# 言語仕様（v0.3）
 
 ## 0. 設計原則
 - 本言語はドメイン整合性検証専用の DSL であり、汎用計算系ではない。
 - 言語内計算は純粋（副作用なし）・非破壊であり、外部状態に依存しない。
-- 関数は全域性を要求する。v0.2 では再帰（自己再帰・相互再帰）を禁止する。
+- 関数は全域性を要求する。v0.3 では自己再帰を条件付きで許可し、相互再帰は禁止する。
 
 ## 1. 形式
 - S 式のみを受け付ける。
@@ -11,14 +11,14 @@
 - `import` で複数ファイルを連結し、単一 `Program` として検査する。
 - 識別子（sort/data/relation/defn 名、定数など）は Unicode を許可する。
 - Atom は NFC へ正規化して解釈する（`import` の引用符付きパス文字列は正規化しない）。
-- キーワードは英語固定（`sort`/`data`/`relation`/`defn` など）。日本語キーワードは v0.2 では未対応。
+- キーワードは英語固定（`sort`/`data`/`relation`/`defn` など）。日本語キーワードは v0.3 でも未対応。
 
 ### 1.1 Atom 正規化境界（引用符・エスケープ）
 - `"` で始まり `"` で終わる Atom は quoted Atom とみなし、NFC 正規化しない。
 - quoted Atom は「文字列リテラル」ではなく、エスケープ解釈（`\n` / `\t` / `\"` など）を行わない。
 - quoted Atom 内のバックスラッシュはそのまま保持される。
 - `import` は quoted Atom の先頭/末尾 `"` のみを除去して path として扱う。
-- 字句境界は空白・`(`・`)`・`;` で決まるため、quoted Atom 内でも空白や `;` を含むトークンは v0.2 では未対応。
+- 字句境界は空白・`(`・`)`・`;` で決まるため、quoted Atom 内でも空白や `;` を含むトークンは v0.3 でも未対応。
 
 ## 2. CLI
 - `dtl check <FILE>... [--format text|json]`
@@ -34,6 +34,9 @@
   - 単一ファイル入力: その入力ファイル
   - 複数ファイル入力: 当該定義を含むファイル
   - `import` 利用時: import 先を含む実ファイル
+- `E-TOTAL` には機械可読フィールドを付与する。
+  - `reason`: 停止性違反カテゴリ（`mutual_recursion` / `non_tail_recursive_call` / `recursive_call_arity_mismatch` / `no_adt_parameter` / `non_decreasing_argument`）
+  - `arg_indices`: `reason = non_decreasing_argument` の場合のみ出力。構造減少を要求した引数位置（1始まり）。
 
 ## 3. トップレベルフォーム
 
@@ -47,7 +50,7 @@
 (sort Subject)
 ```
 
-### 3.3 data（単相・非再帰）
+### 3.3 data（単相・再帰許可）
 ```lisp
 (data Action
   (read)
@@ -125,14 +128,17 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 7. 検証意味論
 - `check`
-  - 関数再帰を禁止（`E-TOTAL`）。
+  - 自己再帰は次の条件を満たす場合のみ許可し、それ以外は `E-TOTAL`。
+    - 再帰呼び出しが tail position にある。
+    - 少なくとも 1 つの ADT 引数が strict subterm（`match` 分解で得た部分値）に減少している。
+  - 相互再帰（SCC サイズ > 1）は `E-TOTAL`。
   - `match` は網羅必須・到達不能分岐検出（`E-MATCH`）。
   - `Symbol` と `Domain` の暗黙互換は行わない。
   - 意味固定ポリシー:
     - `data` constructor を業務語彙の閉集合として利用する（正規名強制）。
     - `sort` は開集合として扱う。
     - 概念変更（v1/v2 差分や外部連携差分）は型を分離し、`defn` で明示変換する。
-    - 同義語 alias 機能は v0.2 では提供しない。
+    - 同義語 alias 機能は v0.3 でも提供しない。
 - `prove`
   - 証明義務:
     - `defn` の戻り値 Refinement 含意
@@ -161,7 +167,7 @@ term = var | symbol | int | bool | (Ctor term*)
 - `E-STRATIFY`: 層化違反
 - `E-TYPE`: 型エラー
 - `E-ENTAIL`: 含意失敗
-- `E-TOTAL`: 全域性違反（再帰禁止違反）
-- `E-DATA`: `data` 宣言違反（重複・再帰・constructor 不整合）
+- `E-TOTAL`: 全域性違反（非構造再帰 / 非 tail 再帰 / 相互再帰）
+- `E-DATA`: `data` 宣言違反（重複・型名衝突・constructor 不整合）
 - `E-MATCH`: `match` 検査違反（非網羅・到達不能・型不整合）
 - `E-PROVE`: 証明失敗 / universe 不備 / 反例検出

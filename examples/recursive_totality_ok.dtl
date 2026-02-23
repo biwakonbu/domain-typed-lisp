@@ -1,0 +1,8 @@
+(data Nat (z) (s Nat))
+
+(defn countdown-ok ((n Nat)) Bool
+  (match n
+    ((z) true)
+    ((s m) (countdown-ok m))))
+
+(assert recursion-sample-proves () true)

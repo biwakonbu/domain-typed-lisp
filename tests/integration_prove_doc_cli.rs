@@ -254,3 +254,52 @@ fn cli_doc_generates_bundle_for_japanese_example() {
             .any(|o| o["id"] == "defn::契約可否" && o["result"] == "proved")
     );
 }
+
+#[test]
+fn cli_prove_and_doc_support_recursive_function_sample() {
+    let src = example_path("recursive_totality_ok.dtl");
+    let dir = tempdir().expect("tempdir");
+    let prove_out = dir.path().join("recursive_prove_out");
+    let doc_out = dir.path().join("recursive_doc_out");
+
+    let mut prove_cmd = cargo_bin_cmd!("dtl");
+    let prove_stdout = prove_cmd
+        .arg("prove")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--out")
+        .arg(&prove_out)
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let prove_value: Value = serde_json::from_slice(&prove_stdout).expect("valid prove json");
+    assert_eq!(prove_value["status"], "ok");
+    assert!(
+        prove_value["proof"]["obligations"]
+            .as_array()
+            .expect("obligations")
+            .iter()
+            .any(|o| o["id"] == "assert::recursion-sample-proves" && o["result"] == "proved")
+    );
+    assert!(prove_out.join("proof-trace.json").exists());
+
+    let mut doc_cmd = cargo_bin_cmd!("dtl");
+    doc_cmd
+        .arg("doc")
+        .arg(&src)
+        .arg("--out")
+        .arg(&doc_out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success();
+
+    assert!(doc_out.join("spec.json").exists());
+    assert!(doc_out.join("proof-trace.json").exists());
+    assert!(doc_out.join("doc-index.json").exists());
+}

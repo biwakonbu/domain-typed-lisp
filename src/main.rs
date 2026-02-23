@@ -77,6 +77,10 @@ struct JsonDiagnostic {
     #[serde(skip_serializing_if = "Option::is_none")]
     source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    arg_indices: Option<Vec<usize>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hint: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     span: Option<JsonSpan>,
@@ -450,6 +454,8 @@ fn as_json_diagnostic(diag: &Diagnostic) -> JsonDiagnostic {
         code: diag.code,
         message: diag.message.clone(),
         source: diag.source().map(ToOwned::to_owned),
+        reason: diag.reason().map(ToOwned::to_owned),
+        arg_indices: diag.arg_indices().map(ToOwned::to_owned),
         hint: diag.hint(),
         span: diag.span.as_ref().map(as_json_span),
     }

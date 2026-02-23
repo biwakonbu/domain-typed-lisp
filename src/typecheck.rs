@@ -35,6 +35,24 @@ struct TypeContext {
     kb_template: KnowledgeBase,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct OriginInfo {
+    param_index: usize,
+    strict_subterm: bool,
+}
+
+struct RecursionRule<'a> {
+    function_name: &'a str,
+    adt_param_indices: &'a HashSet<usize>,
+    param_len: usize,
+}
+
+const TOTAL_REASON_MUTUAL_RECURSION: &str = "mutual_recursion";
+const TOTAL_REASON_NON_TAIL_CALL: &str = "non_tail_recursive_call";
+const TOTAL_REASON_ARITY_MISMATCH: &str = "recursive_call_arity_mismatch";
+const TOTAL_REASON_NO_ADT_PARAM: &str = "no_adt_parameter";
+const TOTAL_REASON_NON_DECREASING_ARG: &str = "non_decreasing_argument";
+
 pub fn check_program(program: &Program) -> Result<TypeReport, Vec<Diagnostic>> {
     let mut errors = resolve_program(program);
     if !errors.is_empty() {
@@ -96,62 +114,321 @@ fn check_totality(program: &Program) -> Vec<Diagnostic> {
     }
 
     let mut errors = Vec::new();
-    let mut temp = HashSet::new();
-    let mut perm = HashSet::new();
-    let span_map: HashMap<String, _> = program
-        .defns
-        .iter()
-        .map(|d| (d.name.clone(), d.span.clone()))
-        .collect();
+    let data_names: HashSet<String> = program.data_decls.iter().map(|d| d.name.clone()).collect();
+    let defn_map: HashMap<String, &Defn> =
+        program.defns.iter().map(|d| (d.name.clone(), d)).collect();
+    let mut unassigned: HashSet<String> = function_names.iter().cloned().collect();
+    let node_list: Vec<String> = function_names.iter().cloned().collect();
+    let mut reachability_cache: HashMap<(String, String), bool> = HashMap::new();
 
-    for defn in &program.defns {
-        let mut stack = Vec::new();
-        detect_cycle(
-            &defn.name,
-            &calls,
-            &mut temp,
-            &mut perm,
-            &mut stack,
-            &mut errors,
-            &span_map,
-        );
+    while let Some(seed) = unassigned.iter().next().cloned() {
+        let mut component = Vec::new();
+        for node in &node_list {
+            if can_reach(&seed, node, &calls, &mut reachability_cache)
+                && can_reach(node, &seed, &calls, &mut reachability_cache)
+            {
+                component.push(node.clone());
+            }
+        }
+
+        for node in &component {
+            unassigned.remove(node);
+        }
+
+        component.sort();
+        if component.len() > 1 {
+            let cycle = component.join(" -> ");
+            for name in &component {
+                let span = defn_map.get(name).map(|d| d.span.clone());
+                errors.push(
+                    Diagnostic::new(
+                        "E-TOTAL",
+                        format!("mutual recursion is not allowed: {cycle}"),
+                        span,
+                    )
+                    .with_reason(TOTAL_REASON_MUTUAL_RECURSION),
+                );
+            }
+            continue;
+        }
+
+        let Some(name) = component.first() else {
+            continue;
+        };
+        let self_recursive = calls.get(name).is_some_and(|nexts| nexts.contains(name));
+        if !self_recursive {
+            continue;
+        }
+
+        if let Some(defn) = defn_map.get(name) {
+            errors.extend(check_structural_recursion(defn, &data_names));
+        }
     }
 
     errors
 }
 
-fn detect_cycle(
-    name: &str,
+fn can_reach(
+    start: &str,
+    target: &str,
     calls: &HashMap<String, HashSet<String>>,
-    temp: &mut HashSet<String>,
-    perm: &mut HashSet<String>,
-    stack: &mut Vec<String>,
-    errors: &mut Vec<Diagnostic>,
-    span_map: &HashMap<String, crate::diagnostics::Span>,
-) {
-    if perm.contains(name) {
-        return;
+    cache: &mut HashMap<(String, String), bool>,
+) -> bool {
+    let key = (start.to_string(), target.to_string());
+    if let Some(cached) = cache.get(&key) {
+        return *cached;
     }
-    if temp.contains(name) {
-        let span = span_map.get(name).cloned();
-        errors.push(Diagnostic::new(
-            "E-TOTAL",
-            format!("recursive function is not allowed: {name}"),
-            span,
-        ));
+
+    if start == target {
+        cache.insert(key, true);
+        return true;
+    }
+
+    let mut seen = HashSet::new();
+    let mut stack = vec![start.to_string()];
+    seen.insert(start.to_string());
+
+    let mut found = false;
+    while let Some(node) = stack.pop() {
+        if let Some(nexts) = calls.get(&node) {
+            for next in nexts {
+                if next == target {
+                    found = true;
+                    break;
+                }
+                if seen.insert(next.clone()) {
+                    stack.push(next.clone());
+                }
+            }
+        }
+        if found {
+            break;
+        }
+    }
+
+    cache.insert(key, found);
+    found
+}
+
+fn check_structural_recursion(defn: &Defn, data_names: &HashSet<String>) -> Vec<Diagnostic> {
+    let adt_param_indices: HashSet<usize> = defn
+        .params
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, p)| {
+            let ty = canonicalize_type(&p.ty, data_names);
+            if matches!(ty.as_base(), Type::Adt(_)) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut origin_env = HashMap::new();
+    for (idx, p) in defn.params.iter().enumerate() {
+        origin_env.insert(
+            p.name.clone(),
+            OriginInfo {
+                param_index: idx,
+                strict_subterm: false,
+            },
+        );
+    }
+
+    let mut errors = Vec::new();
+    let rule = RecursionRule {
+        function_name: &defn.name,
+        adt_param_indices: &adt_param_indices,
+        param_len: defn.params.len(),
+    };
+    collect_totality_violations(&defn.body, true, &origin_env, &rule, &mut errors);
+    errors
+}
+
+fn collect_totality_violations(
+    expr: &Expr,
+    is_tail_position: bool,
+    origin_env: &HashMap<String, OriginInfo>,
+    rule: &RecursionRule<'_>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => {}
+        Expr::Call { name, args, span } => {
+            for arg in args {
+                collect_totality_violations(arg, false, origin_env, rule, errors);
+            }
+
+            if name == rule.function_name {
+                check_recursive_call(args, span, is_tail_position, origin_env, rule, errors);
+            }
+        }
+        Expr::Let { bindings, body, .. } => {
+            let mut local_env = origin_env.clone();
+            for (name, bexpr, _) in bindings {
+                collect_totality_violations(bexpr, false, &local_env, rule, errors);
+                if let Some(origin) = origin_of_expr(bexpr, &local_env) {
+                    local_env.insert(name.clone(), origin);
+                } else {
+                    local_env.remove(name);
+                }
+            }
+            collect_totality_violations(body, is_tail_position, &local_env, rule, errors);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_totality_violations(cond, false, origin_env, rule, errors);
+            collect_totality_violations(then_branch, is_tail_position, origin_env, rule, errors);
+            collect_totality_violations(else_branch, is_tail_position, origin_env, rule, errors);
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_totality_violations(scrutinee, false, origin_env, rule, errors);
+
+            let scrutinee_origin = origin_of_expr(scrutinee, origin_env);
+            for arm in arms {
+                let mut arm_env = origin_env.clone();
+                bind_pattern_origins(&arm.pattern, scrutinee_origin, &mut arm_env);
+                collect_totality_violations(&arm.body, is_tail_position, &arm_env, rule, errors);
+            }
+        }
+    }
+}
+
+fn check_recursive_call(
+    args: &[Expr],
+    span: &crate::diagnostics::Span,
+    is_tail_position: bool,
+    origin_env: &HashMap<String, OriginInfo>,
+    rule: &RecursionRule<'_>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let function_name = rule.function_name;
+    if !is_tail_position {
+        errors.push(
+            Diagnostic::new(
+                "E-TOTAL",
+                format!("recursive function is not in tail position: {function_name}"),
+                Some(span.clone()),
+            )
+            .with_reason(TOTAL_REASON_NON_TAIL_CALL),
+        );
         return;
     }
 
-    temp.insert(name.to_string());
-    stack.push(name.to_string());
-    if let Some(nexts) = calls.get(name) {
-        for next in nexts {
-            detect_cycle(next, calls, temp, perm, stack, errors, span_map);
+    if args.len() != rule.param_len {
+        errors.push(Diagnostic::new(
+            "E-TOTAL",
+            format!(
+                "recursive call arity mismatch in {function_name}: expected {param_len}, got {got}",
+                param_len = rule.param_len,
+                got = args.len()
+            ),
+            Some(span.clone()),
+        )
+        .with_reason(TOTAL_REASON_ARITY_MISMATCH));
+        return;
+    }
+
+    if rule.adt_param_indices.is_empty() {
+        errors.push(Diagnostic::new(
+            "E-TOTAL",
+            format!(
+                "recursive function is not structurally decreasing: no ADT parameter in {function_name}"
+            ),
+            Some(span.clone()),
+        )
+        .with_reason(TOTAL_REASON_NO_ADT_PARAM));
+        return;
+    }
+
+    let mut positions = rule.adt_param_indices.iter().copied().collect::<Vec<_>>();
+    positions.sort_unstable();
+    let has_decreasing_arg = positions.iter().any(|idx| {
+        is_strict_subterm_of_param(
+            args.get(*idx)
+                .expect("recursive call arity already validated"),
+            *idx,
+            origin_env,
+        )
+    });
+
+    if !has_decreasing_arg {
+        let one_based = positions.iter().map(|idx| idx + 1).collect::<Vec<_>>();
+        let one_based_text = one_based
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        errors.push(
+            Diagnostic::new(
+                "E-TOTAL",
+                format!(
+                    "recursive function is not structurally decreasing: argument index [{}]",
+                    one_based_text
+                ),
+                Some(span.clone()),
+            )
+            .with_reason(TOTAL_REASON_NON_DECREASING_ARG)
+            .with_arg_indices(one_based),
+        );
+    }
+}
+
+fn is_strict_subterm_of_param(
+    expr: &Expr,
+    param_index: usize,
+    origin_env: &HashMap<String, OriginInfo>,
+) -> bool {
+    let Expr::Var { name, .. } = expr else {
+        return false;
+    };
+    let Some(origin) = origin_env.get(name) else {
+        return false;
+    };
+    origin.param_index == param_index && origin.strict_subterm
+}
+
+fn origin_of_expr(expr: &Expr, env: &HashMap<String, OriginInfo>) -> Option<OriginInfo> {
+    let Expr::Var { name, .. } = expr else {
+        return None;
+    };
+    env.get(name).copied()
+}
+
+fn bind_pattern_origins(
+    pattern: &Pattern,
+    scrutinee_origin: Option<OriginInfo>,
+    env: &mut HashMap<String, OriginInfo>,
+) {
+    match pattern {
+        Pattern::Wildcard { .. }
+        | Pattern::Symbol { .. }
+        | Pattern::Int { .. }
+        | Pattern::Bool { .. } => {}
+        Pattern::Var { name, .. } => {
+            if let Some(origin) = scrutinee_origin {
+                env.insert(name.clone(), origin);
+            } else {
+                env.remove(name);
+            }
+        }
+        Pattern::Ctor { args, .. } => {
+            let child_origin = scrutinee_origin.map(|origin| OriginInfo {
+                param_index: origin.param_index,
+                strict_subterm: true,
+            });
+            for arg in args {
+                bind_pattern_origins(arg, child_origin, env);
+            }
         }
     }
-    stack.pop();
-    temp.remove(name);
-    perm.insert(name.to_string());
 }
 
 fn collect_function_calls(
