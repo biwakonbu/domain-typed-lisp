@@ -292,48 +292,241 @@ fn render_spec_content(
 
 fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
     let mut out = String::new();
-    out.push_str("# Domain Specification\n\n");
+    let proved = trace
+        .obligations
+        .iter()
+        .filter(|o| o.result == "proved")
+        .count();
+    let failed = trace.obligations.len().saturating_sub(proved);
 
-    out.push_str("## Sorts\n");
-    for sort in &program.sorts {
-        out.push_str(&format!("- {}\n", sort.name));
-    }
-    out.push('\n');
+    out.push_str("# ドメイン仕様書\n\n");
+    out.push_str("この文書は `dtl doc` により自動生成された検証済み仕様です。");
+    out.push_str("記述内容はプログラム定義と証明結果を同期したものです。\n\n");
 
-    out.push_str("## Data Declarations\n");
-    for data in &program.data_decls {
-        out.push_str(&format!("- {}\n", data.name));
-        for ctor in &data.constructors {
-            let fields = ctor
-                .fields
-                .iter()
-                .map(type_to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            out.push_str(&format!("  - {}({})\n", ctor.name, fields));
+    out.push_str("## 概要\n");
+    out.push_str(&format!(
+        "- sort: {} 件 / data: {} 件 / relation: {} 件 / defn: {} 件 / assert: {} 件\n",
+        program.sorts.len(),
+        program.data_decls.len(),
+        program.relations.len(),
+        program.defns.len(),
+        program.asserts.len()
+    ));
+    out.push_str(&format!(
+        "- 証明義務: {} 件（proved: {} / failed: {}）\n\n",
+        trace.obligations.len(),
+        proved,
+        failed
+    ));
+
+    out.push_str("## 型定義\n");
+    if program.sorts.is_empty() && program.data_decls.is_empty() {
+        out.push_str("- 定義なし\n");
+    } else {
+        for sort in &program.sorts {
+            out.push_str(&format!("- sort `{}`\n", sort.name));
+        }
+        for data in &program.data_decls {
+            out.push_str(&format!("- data `{}`\n", data.name));
+            for ctor in &data.constructors {
+                let fields = ctor
+                    .fields
+                    .iter()
+                    .map(type_to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if fields.is_empty() {
+                    out.push_str(&format!("  - `{}`\n", ctor.name));
+                } else {
+                    out.push_str(&format!("  - `{}`({})\n", ctor.name, fields));
+                }
+            }
         }
     }
     out.push('\n');
 
-    out.push_str("## Relations\n");
-    for rel in &program.relations {
-        let args = rel.arg_sorts.join(", ");
-        out.push_str(&format!("- {}({})\n", rel.name, args));
+    out.push_str("## 関係と仕様\n");
+    if program.relations.is_empty() {
+        out.push_str("- relation 定義なし\n");
+    } else {
+        for rel in &program.relations {
+            let args = rel.arg_sorts.join(", ");
+            out.push_str(&format!("- relation `{}`({})\n", rel.name, args));
+        }
+    }
+    if !program.asserts.is_empty() {
+        out.push_str("- assert\n");
+        for a in &program.asserts {
+            out.push_str(&format!("  - `{}`\n", a.name));
+        }
     }
     out.push('\n');
 
-    out.push_str("## Assertions\n");
-    for a in &program.asserts {
-        out.push_str(&format!("- {}\n", a.name));
-    }
-    out.push('\n');
-
-    out.push_str("## Proof Status\n");
+    out.push_str("## 証明結果\n");
     for o in &trace.obligations {
-        out.push_str(&format!("- {} [{}]\n", o.id, o.result));
+        out.push_str(&format!("- `{}`: `{}`\n", o.id, o.result));
     }
+    out.push('\n');
+
+    out.push_str("## Mermaid: 型・関係図\n\n");
+    out.push_str("```mermaid\n");
+    out.push_str("erDiagram\n");
+    for (idx, sort) in program.sorts.iter().enumerate() {
+        out.push_str(&format!(
+            "  S{idx} {{\n    string name \"{}\"\n  }}\n",
+            sort.name
+        ));
+    }
+    for (idx, data) in program.data_decls.iter().enumerate() {
+        out.push_str(&format!(
+            "  D{idx} {{\n    string name \"{}\"\n  }}\n",
+            data.name
+        ));
+    }
+    for (idx, rel) in program.relations.iter().enumerate() {
+        out.push_str(&format!(
+            "  R{idx} {{\n    string signature \"{}\"\n  }}\n",
+            rel.name
+        ));
+        for (arg_idx, arg) in rel.arg_sorts.iter().enumerate() {
+            out.push_str(&format!("  R{idx} ||--|| A{idx}_{arg_idx} : \"{}\"\n", arg));
+            out.push_str(&format!(
+                "  A{idx}_{arg_idx} {{\n    string type \"{}\"\n  }}\n",
+                arg
+            ));
+        }
+    }
+    out.push_str("```\n\n");
+
+    out.push_str("## Mermaid: 依存グラフ\n\n");
+    out.push_str("```mermaid\n");
+    out.push_str("flowchart TD\n");
+
+    let mut relation_ids = HashMap::new();
+    for (idx, rel) in program.relations.iter().enumerate() {
+        let id = format!("R{idx}");
+        relation_ids.insert(rel.name.clone(), id.clone());
+        out.push_str(&format!("  {id}[\"relation: {}\"]\n", rel.name));
+    }
+    let mut defn_ids = HashMap::new();
+    for (idx, defn) in program.defns.iter().enumerate() {
+        let id = format!("D{idx}");
+        defn_ids.insert(defn.name.clone(), id.clone());
+        out.push_str(&format!("  {id}[\"defn: {}\"]\n", defn.name));
+    }
+    let mut assert_ids = HashMap::new();
+    for (idx, assertion) in program.asserts.iter().enumerate() {
+        let id = format!("A{idx}");
+        assert_ids.insert(assertion.name.clone(), id.clone());
+        out.push_str(&format!("  {id}[\"assert: {}\"]\n", assertion.name));
+    }
+
+    for rule in &program.rules {
+        if let Some(head_id) = relation_ids.get(&rule.head.pred) {
+            let mut refs = HashSet::new();
+            collect_formula_preds(&rule.body, &mut refs);
+            for pred in refs {
+                if let Some(from_id) = relation_ids.get(&pred) {
+                    out.push_str(&format!("  {from_id} --> {head_id}\n"));
+                }
+            }
+        }
+    }
+
+    for defn in &program.defns {
+        let Some(defn_id) = defn_ids.get(&defn.name) else {
+            continue;
+        };
+        let mut refs = HashSet::new();
+        collect_expr_call_names(&defn.body, &mut refs);
+        for name in refs {
+            if let Some(rel_id) = relation_ids.get(&name) {
+                out.push_str(&format!("  {defn_id} --> {rel_id}\n"));
+            } else if let Some(callee_id) = defn_ids.get(&name) {
+                out.push_str(&format!("  {defn_id} --> {callee_id}\n"));
+            }
+        }
+    }
+
+    for assertion in &program.asserts {
+        let Some(assert_id) = assert_ids.get(&assertion.name) else {
+            continue;
+        };
+        let mut refs = HashSet::new();
+        collect_formula_preds(&assertion.formula, &mut refs);
+        for pred in refs {
+            if let Some(rel_id) = relation_ids.get(&pred) {
+                out.push_str(&format!("  {assert_id} --> {rel_id}\n"));
+            }
+        }
+    }
+    out.push_str("```\n\n");
+
+    out.push_str("## Mermaid: 証明要約\n\n");
+    out.push_str("```mermaid\n");
+    out.push_str("graph LR\n");
+    out.push_str(&format!(
+        "  TOTAL[\"obligations: {}\"]\n",
+        trace.obligations.len()
+    ));
+    out.push_str(&format!("  OK[\"proved: {proved}\"]\n"));
+    out.push_str(&format!("  NG[\"failed: {failed}\"]\n"));
+    out.push_str("  TOTAL --> OK\n");
+    out.push_str("  TOTAL --> NG\n");
+    out.push_str("```\n");
 
     out
+}
+
+fn collect_formula_preds(formula: &Formula, out: &mut HashSet<String>) {
+    match formula {
+        Formula::True => {}
+        Formula::Atom(atom) => {
+            out.insert(atom.pred.clone());
+        }
+        Formula::And(items) => {
+            for item in items {
+                collect_formula_preds(item, out);
+            }
+        }
+        Formula::Not(inner) => collect_formula_preds(inner, out),
+    }
+}
+
+fn collect_expr_call_names(expr: &Expr, out: &mut HashSet<String>) {
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => {}
+        Expr::Call { name, args, .. } => {
+            out.insert(name.clone());
+            for arg in args {
+                collect_expr_call_names(arg, out);
+            }
+        }
+        Expr::Let { bindings, body, .. } => {
+            for (_, bexpr, _) in bindings {
+                collect_expr_call_names(bexpr, out);
+            }
+            collect_expr_call_names(body, out);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_expr_call_names(cond, out);
+            collect_expr_call_names(then_branch, out);
+            collect_expr_call_names(else_branch, out);
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_expr_call_names(scrutinee, out);
+            for arm in arms {
+                collect_expr_call_names(&arm.body, out);
+            }
+        }
+    }
 }
 
 fn render_spec_json(program: &Program, trace: &ProofTrace) -> JsonSpec {

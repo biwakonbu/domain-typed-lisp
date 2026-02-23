@@ -5,9 +5,11 @@
 
 `dtl` は、ドメイン定義 DSL を純粋・非破壊に検査/証明/文書化するための Lisp 系言語です。
 
-- 静的検査: 型整合・層化否定・`match` 網羅性・全域性（再帰禁止）
+- 静的検査: 型整合・層化否定・`match` 網羅性・全域性（構造再帰判定）
+- lint: 重複候補検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）
+- format: Surface 形式への正規化整形（in-place / check / stdout）
 - 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
-- ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力
+- ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力（`--pdf` 対応）
 - 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は非正規化・エスケープ非解釈）
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
 
@@ -15,8 +17,11 @@
 ```bash
 cargo build
 cargo run -- check examples/access_control_ok.dtl
+cargo run -- lint examples/access_control_ok.dtl --format json
+cargo run -- fmt examples/access_control_ok.dtl --check
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out
 cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown
+cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown --pdf
 cargo run -- doc examples/customer_contract_ja.dtl --out out_json --format json
 
 # 日本語ドメイン型サンプル
@@ -45,7 +50,23 @@ dtl doc <FILE>... --out DIR [--format markdown|json]
 ```
 - すべての義務が証明された場合のみ成果物を出力する。
   - `--format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
+  - `--pdf`: markdown 出力後に `spec.pdf` 生成を試行（失敗は warning）
   - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
+
+### `lint`
+```bash
+dtl lint <FILE>... [--format text|json] [--deny-warnings] [--semantic-dup]
+```
+- 重複検出と未使用宣言検出を warning として出力する。
+- `--deny-warnings` を指定すると warning で exit code 1。
+
+### `fmt`
+```bash
+dtl fmt <FILE>... [--check] [--stdout]
+```
+- 既定は in-place 整形。
+- `--check` は差分検出のみ。
+- `--stdout` は単一入力時に整形結果を標準出力。
 
 ## 検証コマンド
 ```bash
@@ -58,11 +79,11 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 ```
 
 ## ドキュメント
-- [言語仕様 v0.2](docs/language-spec.md)
-- [言語解説ガイド v0.2](docs/language-guide-ja.md)
-- [エラーコード別トラブルシュート v0.2](docs/troubleshooting-errors-ja.md)
+- [言語仕様 v0.4](docs/language-spec.md)
+- [言語解説ガイド v0.4](docs/language-guide-ja.md)
+- [エラーコード別トラブルシュート v0.4](docs/troubleshooting-errors-ja.md)
 - [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
-- [v0.2 移行ガイド](docs/migration-v0.2.md)
+- [v0.2 移行ガイド（v0.4 追補）](docs/migration-v0.2.md)
 - [検証計画](docs/verification-plan.md)
 - [テストマトリクス](docs/test-matrix.md)
 - [v0.3 停止性解析設計](docs/termination-analysis-v0.3.md)

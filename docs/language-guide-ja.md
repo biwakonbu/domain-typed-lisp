@@ -1,9 +1,9 @@
-# 言語解説ガイド（v0.2）
+# 言語解説ガイド（v0.4）
 
 この文書は、`docs/language-spec.md` の仕様項目を「なぜその設計か」「実際にどう書くか」「どこで失敗するか」の観点で補足する実践向けガイドです。
 
 ## 1. 対象バージョン
-- DSL 仕様: v0.2（`docs/language-spec.md` 準拠）
+- DSL 仕様: v0.4（`docs/language-spec.md` 準拠）
 - 実装: `dtl` 本体（Rust, `rust-toolchain.toml` は `1.93.0`）
 
 ## 2. この DSL が解く問題
@@ -13,7 +13,7 @@
 2. `prove`: 有限モデル（`universe`）での証明義務検証
 3. `doc`: 証明済み仕様のみを文書化
 
-重要なのは、**汎用プログラミング言語ではなく、検証 DSL** である点です。副作用と再帰を抑え、意味を固定しやすくしています。
+重要なのは、**汎用プログラミング言語ではなく、検証 DSL** である点です。副作用を排除し、再帰は停止性条件付きで扱います。
 
 ## 3. まず覚える 6 つの概念
 
@@ -47,8 +47,12 @@
 
 `rule` 変数は `?x` 形式です。ヘッドの変数は正リテラル側で束縛されている必要があります（安全性制約）。
 
-### 3.4 `defn`: 型付き関数（再帰禁止）
-関数は pure で再帰禁止です。戻り値に `Refine` を使うと、契約として証明対象になります。
+### 3.4 `defn`: 型付き関数（構造再帰）
+関数は pure です。自己再帰は次を満たす場合のみ許可されます。
+- tail position にあること
+- ADT 引数の少なくとも 1 つが strict subterm（`match` 分解で得た部分値）へ減少すること
+
+相互再帰は許可されません。戻り値に `Refine` を使うと、契約として証明対象になります。
 
 ```lisp
 (defn 契約可否 ((担当 主体) (契約ID 契約) (種別 顧客種別))
@@ -70,8 +74,18 @@
 
 ## 4. 書き方の実務ルール
 
-### 4.1 キーワードは英語固定
-`sort`/`data`/`relation`/`defn`/`match` などは英語です。日本語キーワードは v0.2 非対応です。
+### 4.1 Core / Surface 二層構文
+- Core: 既存の英語キーワード S 式（後方互換）。
+- Surface: タグ付き可読構文（日本語/英語エイリアス）。
+- 先頭コメント `; syntax: core|surface` で明示できます（省略時 auto 判定）。
+
+Surface 例:
+```lisp
+; syntax: surface
+(型 主体)
+(データ 顧客種別 :コンストラクタ ((法人) (個人)))
+(関係 契約締結可能 :引数 (主体 契約 顧客種別))
+```
 
 ### 4.2 識別子は日本語可（Unicode）
 識別子は日本語可です。例えば `契約可否` や `顧客種別` をそのまま使えます。
@@ -84,7 +98,7 @@
 ### 4.4 quoted Atom の境界
 - quoted Atom は**文字列リテラルではありません**。`\\n` / `\\t` / `\\\"` などのエスケープは解釈されません。
 - バックスラッシュはそのまま保持されます。
-- v0.2 の lexer は空白・`(`・`)`・`;` でトークン分割するため、quoted Atom 内の空白や `;` を含む記述は扱えません。
+- v0.4 の lexer は空白・`(`・`)`・`;` でトークン分割するため、quoted Atom 内の空白や `;` を含む記述は扱えません。
 
 ### 4.5 `Symbol` と `Domain` / `Adt` は別物
 `Symbol` を `Domain`/`Adt` 引数に暗黙で渡せません。明示的に型を合わせます。
@@ -106,7 +120,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 - 軸だけ定義したい: `sort` を使う
 - 概念を変換したい: 型を分けて `defn` で変換
 
-同義語 alias で吸収する設計は、v0.2 では採用していません。
+同義語 alias で吸収する設計は、v0.4 でも採用していません。
 
 ## 6. `match` の重要挙動
 - `Bool` と `Adt` については網羅性チェックされます。
@@ -130,7 +144,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 - `E-PARSE`: 形が不正
 - `E-RESOLVE`: 名前未定義、重複、unsafe rule
 - `E-TYPE`: 型不一致
-- `E-TOTAL`: 再帰
+- `E-TOTAL`: 非構造再帰（非 tail / 非減少）または相互再帰
 - `E-MATCH`: 非網羅/到達不能
 
 ### 7.2 `prove`
@@ -141,6 +155,26 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 
 - `--format markdown`（既定）: `spec.md` / `proof-trace.json` / `doc-index.json`
 - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
+- `--pdf`（markdown 時）: `spec.pdf` 追加生成を試行。失敗時も Markdown 生成は成功扱いです。
+
+### 7.4 `lint`
+```bash
+cargo run -- lint examples/customer_contract_ja.dtl --format json
+```
+- `L-DUP-EXACT`: 確定重複
+- `L-DUP-MAYBE`: 近似同値による重複候補（`--semantic-dup`）
+- `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定を universe 不足でスキップ
+- `L-UNUSED-DECL`: 未使用宣言
+- `--deny-warnings` を付けると warning で exit 1
+
+### 7.5 `fmt`
+```bash
+cargo run -- fmt examples/customer_contract_ja.dtl --check
+cargo run -- fmt examples/customer_contract_ja.dtl
+```
+- 既定は in-place 更新
+- `--check` は差分検出のみ
+- `--stdout` は単一ファイル入力時のみ
 
 ## 8. チュートリアル: `check -> prove -> doc` 一気通貫
 
@@ -188,6 +222,9 @@ Markdown 仕様を出力:
 
 ```bash
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown
+
+# PDF も必要な場合（Pandoc 環境）
+cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown --pdf
 ```
 
 JSON 仕様を出力:

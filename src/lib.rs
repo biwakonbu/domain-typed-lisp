@@ -1,5 +1,7 @@
 pub mod ast;
 pub mod diagnostics;
+pub mod fmt;
+pub mod lint;
 pub mod logic_engine;
 pub mod name_resolve;
 pub mod parser;
@@ -10,6 +12,8 @@ pub mod types;
 
 pub use ast::Program;
 pub use diagnostics::{Diagnostic, Span};
+pub use fmt::{FormatOptions, format_source};
+pub use lint::{LintDiagnostic, LintOptions, LintSeverity, lint_program};
 pub use logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, solve_facts};
 pub use parser::{parse_program, parse_program_with_source};
 pub use prover::{

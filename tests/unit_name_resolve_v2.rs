@@ -11,12 +11,11 @@ fn expect_error(src: &str, code: &str, needle: &str) {
 }
 
 #[test]
-fn resolve_rejects_recursive_data() {
-    expect_error(
-        "(data List (nil) (cons Symbol List))",
-        "E-DATA",
-        "recursive data declaration",
-    );
+fn resolve_accepts_recursive_data() {
+    let src = "(data List (nil) (cons Symbol List))";
+    let program = parse_program(src).expect("parse should succeed");
+    let report = check_program(&program).expect("check should succeed");
+    assert_eq!(report.errors, 0);
 }
 
 #[test]

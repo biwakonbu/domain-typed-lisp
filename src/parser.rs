@@ -56,12 +56,30 @@ pub fn parse_program_with_source(src: &str, source: &str) -> Result<Program, Vec
 }
 
 fn parse_program_impl(src: &str) -> Result<Program, Vec<Diagnostic>> {
+    match determine_syntax_mode(src) {
+        SyntaxMode::Core => parse_program_core(src),
+        SyntaxMode::Surface => parse_program_surface(src),
+    }
+}
+
+fn parse_program_core(src: &str) -> Result<Program, Vec<Diagnostic>> {
     let tokens = lex(src)?;
     let sexprs = parse_sexprs(src, &tokens)?;
+    parse_program_forms(src, &sexprs)
+}
+
+fn parse_program_surface(src: &str) -> Result<Program, Vec<Diagnostic>> {
+    let tokens = lex(src)?;
+    let sexprs = parse_sexprs(src, &tokens)?;
+    let desugared = desugar_surface_program(src, &sexprs)?;
+    parse_program_core(&desugared)
+}
+
+fn parse_program_forms(src: &str, sexprs: &[SExpr]) -> Result<Program, Vec<Diagnostic>> {
     let mut program = Program::new();
     let mut errors = Vec::new();
 
-    for form in &sexprs {
+    for form in sexprs {
         match parse_toplevel(src, form) {
             Ok(TopLevel::Import(i)) => program.imports.push(i),
             Ok(TopLevel::Sort(s)) => program.sorts.push(s),
@@ -81,6 +99,65 @@ fn parse_program_impl(src: &str) -> Result<Program, Vec<Diagnostic>> {
     } else {
         Err(errors)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyntaxMode {
+    Core,
+    Surface,
+}
+
+fn determine_syntax_mode(src: &str) -> SyntaxMode {
+    if let Some(mode) = syntax_mode_from_pragma(src) {
+        return mode;
+    }
+
+    if looks_like_surface(src) {
+        SyntaxMode::Surface
+    } else {
+        SyntaxMode::Core
+    }
+}
+
+fn syntax_mode_from_pragma(src: &str) -> Option<SyntaxMode> {
+    for line in src.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with(';') {
+            break;
+        }
+        let body = trimmed.trim_start_matches(';').trim();
+        let lower = body.to_ascii_lowercase();
+        if let Some(rest) = lower.strip_prefix("syntax:") {
+            let mode = rest.trim();
+            return match mode {
+                "core" => Some(SyntaxMode::Core),
+                "surface" => Some(SyntaxMode::Surface),
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
+fn looks_like_surface(src: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "(型",
+        "(データ",
+        "(関係",
+        "(事実",
+        "(規則",
+        "(検証",
+        "(宇宙",
+        "(関数",
+        ":引数",
+        ":戻り",
+        ":本体",
+        ":コンストラクタ",
+    ];
+    MARKERS.iter().any(|m| src.contains(m))
 }
 
 fn attach_source_to_program_spans(program: &mut Program, source: &str) {
@@ -339,6 +416,391 @@ fn parse_one(src: &str, tokens: &[Token], idx: &mut usize) -> Result<SExpr, Diag
             }
         }
     }
+}
+
+fn desugar_surface_program(src: &str, forms: &[SExpr]) -> Result<String, Vec<Diagnostic>> {
+    let mut errors = Vec::new();
+    let mut out = Vec::new();
+
+    for form in forms {
+        match desugar_surface_toplevel(src, form) {
+            Ok(rendered) => out.push(rendered),
+            Err(err) => errors.push(err),
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(out.join("\n"))
+    } else {
+        Err(errors)
+    }
+}
+
+fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnostic> {
+    let (start, end) = form.span_bounds();
+    let list = match form {
+        SExpr::List(items, _, _) => items,
+        SExpr::Atom(_, _, _) => {
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                "top-level form must be a list",
+                Some(make_span(src, start, end)),
+            ));
+        }
+    };
+    if list.is_empty() {
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "empty top-level form",
+            Some(make_span(src, start, end)),
+        ));
+    }
+
+    let head = atom_required(src, &list[0], "surface top-level head")?;
+    let Some(kind) = canonical_surface_head(&head) else {
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            format!("unknown top-level form: {head}"),
+            Some(make_span(src, start, end)),
+        ));
+    };
+
+    match kind {
+        "import" => {
+            if list.len() != 2 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "import expects exactly 1 path argument",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            Ok(format!("(import {})", sexpr_to_string(&list[1])))
+        }
+        "sort" => {
+            if list.len() != 2 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "sort expects exactly 1 argument",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            Ok(format!("(sort {})", sexpr_to_string(&list[1])))
+        }
+        "data" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "data expects tagged constructors: :コンストラクタ",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "data expects tagged constructors: :コンストラクタ",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "data name")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let ctors = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":コンストラクタ", ":constructors", ":ctors"],
+                "data requires :コンストラクタ",
+            )?;
+            let ctor_items = as_list_items(src, ctors, "constructor list")?;
+            let rendered = ctor_items
+                .iter()
+                .map(sexpr_to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            Ok(format!("(data {name} {rendered})"))
+        }
+        "relation" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "relation expects tagged args: :引数",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "relation expects tagged args: :引数",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "relation name")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let args = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":引数", ":args"],
+                "relation requires :引数",
+            )?;
+            Ok(format!("(relation {name} {})", sexpr_to_string(args)))
+        }
+        "fact" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "fact expects tagged terms: :項",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "fact expects tagged terms: :項",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "fact name")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let terms =
+                required_tag_value(src, form, &tags, &[":項", ":terms"], "fact requires :項")?;
+            let term_items = as_list_items(src, terms, "fact term list")?;
+            let rendered = term_items
+                .iter()
+                .map(sexpr_to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            Ok(format!("(fact {name} {rendered})"))
+        }
+        "rule" => {
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let head =
+                required_tag_value(src, form, &tags, &[":頭", ":head"], "rule requires :頭")?;
+            let body =
+                required_tag_value(src, form, &tags, &[":本体", ":body"], "rule requires :本体")?;
+            Ok(format!(
+                "(rule {} {})",
+                sexpr_to_string(head),
+                sexpr_to_string(body)
+            ))
+        }
+        "assert" => {
+            if list.len() < 4 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "assert expects name and tags :引数/:式",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "assert expects name and tags :引数/:式",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "assert name")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let params = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":引数", ":params"],
+                "assert requires :引数",
+            )?;
+            let formula = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":式", ":formula"],
+                "assert requires :式",
+            )?;
+            Ok(format!(
+                "(assert {name} {} {})",
+                sexpr_to_string(params),
+                sexpr_to_string(formula)
+            ))
+        }
+        "universe" => {
+            if list.len() < 4 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "universe expects type and tag :値",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "universe expects type and tag :値",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let ty_name = atom_required(src, &list[1], "universe type")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let values = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":値", ":values"],
+                "universe requires :値",
+            )?;
+            Ok(format!("(universe {ty_name} {})", sexpr_to_string(values)))
+        }
+        "defn" => {
+            if list.len() < 5 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "defn expects name and tags :引数/:戻り/:本体",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[2]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "defn expects name and tags :引数/:戻り/:本体",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let name = atom_required(src, &list[1], "function name")?;
+            let tags = parse_tag_pairs(src, list, 2)?;
+            let params = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":引数", ":params"],
+                "defn requires :引数",
+            )?;
+            let ret =
+                required_tag_value(src, form, &tags, &[":戻り", ":ret"], "defn requires :戻り")?;
+            let body =
+                required_tag_value(src, form, &tags, &[":本体", ":body"], "defn requires :本体")?;
+            Ok(format!(
+                "(defn {name} {} {} {})",
+                sexpr_to_string(params),
+                sexpr_to_string(ret),
+                sexpr_to_string(body)
+            ))
+        }
+        _ => Err(Diagnostic::new(
+            "E-PARSE",
+            format!("unknown top-level form: {head}"),
+            Some(make_span(src, start, end)),
+        )),
+    }
+}
+
+fn canonical_surface_head(head: &str) -> Option<&'static str> {
+    match head {
+        "import" | "インポート" => Some("import"),
+        "sort" | "型" => Some("sort"),
+        "data" | "データ" => Some("data"),
+        "relation" | "関係" => Some("relation"),
+        "fact" | "事実" => Some("fact"),
+        "rule" | "規則" => Some("rule"),
+        "assert" | "検証" => Some("assert"),
+        "universe" | "宇宙" => Some("universe"),
+        "defn" | "関数" => Some("defn"),
+        _ => None,
+    }
+}
+
+fn parse_tag_pairs<'a>(
+    src: &str,
+    list: &'a [SExpr],
+    start_idx: usize,
+) -> Result<Vec<(String, &'a SExpr)>, Diagnostic> {
+    if start_idx > list.len() {
+        let (s, e) = list
+            .last()
+            .map(SExpr::span_bounds)
+            .unwrap_or((0usize, 0usize));
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "invalid tagged form",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    if (list.len() - start_idx) % 2 != 0 {
+        let (s, e) = list[start_idx].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "tagged form must be key/value pairs",
+            Some(make_span(src, s, e)),
+        ));
+    }
+
+    let mut out = Vec::new();
+    let mut idx = start_idx;
+    while idx < list.len() {
+        let key = atom_required(src, &list[idx], "tag key")?;
+        if !key.starts_with(':') {
+            let (s, e) = list[idx].span_bounds();
+            return Err(Diagnostic::new(
+                "E-PARSE",
+                format!("tag key must start with ':': {key}"),
+                Some(make_span(src, s, e)),
+            ));
+        }
+        out.push((key, &list[idx + 1]));
+        idx += 2;
+    }
+    Ok(out)
+}
+
+fn required_tag_value<'a>(
+    src: &str,
+    form: &SExpr,
+    tags: &[(String, &'a SExpr)],
+    candidates: &[&str],
+    message: &str,
+) -> Result<&'a SExpr, Diagnostic> {
+    for candidate in candidates {
+        if let Some((_, value)) = tags.iter().find(|(key, _)| key == candidate) {
+            return Ok(*value);
+        }
+    }
+    let (s, e) = form.span_bounds();
+    Err(Diagnostic::new(
+        "E-PARSE",
+        message,
+        Some(make_span(src, s, e)),
+    ))
+}
+
+fn as_list_items<'a>(
+    src: &str,
+    node: &'a SExpr,
+    expected: &str,
+) -> Result<&'a [SExpr], Diagnostic> {
+    match node {
+        SExpr::List(items, _, _) => Ok(items),
+        _ => {
+            let (s, e) = node.span_bounds();
+            Err(Diagnostic::new(
+                "E-PARSE",
+                format!("expected list for {expected}"),
+                Some(make_span(src, s, e)),
+            ))
+        }
+    }
+}
+
+fn sexpr_to_string(node: &SExpr) -> String {
+    match node {
+        SExpr::Atom(a, _, _) => a.clone(),
+        SExpr::List(items, _, _) => {
+            let inner = items
+                .iter()
+                .map(sexpr_to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("({inner})")
+        }
+    }
+}
+
+fn is_tag_atom(node: &SExpr) -> bool {
+    node.as_atom().is_some_and(|a| a.starts_with(':'))
 }
 
 enum TopLevel {

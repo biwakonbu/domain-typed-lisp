@@ -1,11 +1,16 @@
-# v0.1.x -> v0.2 移行ガイド
+# v0.1.x -> v0.2 移行ガイド（v0.4 追補）
 
 ## 1. 破壊的変更
 - CLI が `check` / `prove` / `doc` に分離された。
-- 関数再帰（自己再帰・相互再帰）は `E-TOTAL` で禁止。
+- `lint` / `fmt` サブコマンドが追加された。
+- 関数再帰の規則が変更された。
+  - 相互再帰は `E-TOTAL` で禁止。
+  - 自己再帰は「tail position + ADT 引数の構造減少」の場合のみ許可。
+- `data` の再帰定義（例: `(data List (nil) (cons Symbol List))`）を許可。
 - `Symbol` と `Domain` の暗黙互換を廃止。
 - `match` は網羅必須、到達不能分岐は `E-MATCH`。
 - 証明実行には `universe` 宣言が必要（不足時 `E-PROVE`）。
+- 構文モードが `core/surface` の二層になった（先頭 `; syntax: core|surface`）。
 
 ## 2. 置換指針
 
@@ -33,6 +38,37 @@ JSON 仕様成果物が必要な場合:
 ```bash
 dtl doc path/to/file.dtl --out out_json --format json
 ```
+
+PDF まで生成したい場合（Pandoc 利用可能環境）:
+
+```bash
+dtl doc path/to/file.dtl --out out --format markdown --pdf
+```
+
+Pandoc が無い場合も Markdown 成果物は生成され、PDF は warning になります。
+
+### 2.4 lint を導入する場合
+```bash
+dtl lint path/to/file.dtl --format json
+dtl lint path/to/file.dtl --format json --deny-warnings
+dtl lint path/to/file.dtl --format json --semantic-dup
+```
+
+- `L-DUP-EXACT`: 確定重複
+- `L-DUP-MAYBE`: 近似同値による重複候補（`--semantic-dup`）
+- `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
+- `L-UNUSED-DECL`: 未使用宣言
+
+### 2.5 fmt を導入する場合
+```bash
+dtl fmt path/to/file.dtl --check
+dtl fmt path/to/file.dtl
+dtl fmt path/to/file.dtl --stdout
+```
+
+- 既定は in-place 更新
+- `--check` は差分検出のみ
+- `--stdout` は単一入力時のみ有効
 
 ## 3. DSL 修正パターン
 
@@ -62,9 +98,38 @@ dtl doc path/to/file.dtl --out out_json --format json
   (not (and (allowed u) (not (allowed u)))))
 ```
 
+### 3.4 関数再帰を構造再帰へ修正
+非許可（非減少）:
+```lisp
+(data Nat (z) (s Nat))
+(defn bad ((n Nat)) Bool
+  (match n
+    ((z) true)
+    ((s m) (bad n))))
+```
+
+許可（tail + strict subterm 減少）:
+```lisp
+(data Nat (z) (s Nat))
+(defn ok ((n Nat)) Bool
+  (match n
+    ((z) true)
+    ((s m) (ok m))))
+```
+
+### 3.5 Surface 形式へ移行（任意）
+Core のままでも互換ですが、可読性向上のため Surface へ統一可能です。
+
+```lisp
+; syntax: surface
+(型 主体)
+(データ 顧客種別 :コンストラクタ ((法人) (個人)))
+(関係 契約締結可能 :引数 (主体 契約 顧客種別))
+```
+
 ## 4. よくあるエラー
 - `E-TYPE`: constructor 呼び出し漏れ（`read` ではなく `(read)`）。
-- `E-TOTAL`: 関数に再帰呼び出しが残っている。
+- `E-TOTAL`: 非構造再帰（非 tail / 非減少）または相互再帰。
 - `E-MATCH`: `match` の分岐不足 or 到達不能分岐。
 - `E-PROVE`: `universe` 未宣言、または反例あり。
 
@@ -72,6 +137,9 @@ dtl doc path/to/file.dtl --out out_json --format json
 - `cargo fmt --all -- --check`
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo test --workspace --lib --bins --tests`
+- `dtl lint <FILE> --format json --deny-warnings`
+- `dtl fmt <FILE> --check`
 - `dtl prove <FILE> --format json --out out`
 - `dtl doc <FILE> --out out --format markdown`
+- `dtl doc <FILE> --out out --format markdown --pdf`
 - `dtl doc <FILE> --out out_json --format json`

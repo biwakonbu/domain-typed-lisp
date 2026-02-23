@@ -1,18 +1,26 @@
-# TODO (v0.3)
+# TODO (v0.4)
 
 最終更新: 2026-02-23
 
-残件: 0
+残件: 3
 
-## P0
-- [x] `E-TOTAL` を「全再帰禁止」から「相互再帰禁止 + 自己再帰の構造減少判定」へ移行する。
-- [x] 構造再帰の受理/拒否を固定する単体テストを追加する（tail 再帰正例、非 tail/非減少/相互再帰の負例）。
-- [x] `E-TOTAL` 診断を機械可読化する（`reason` / `arg_indices` など）。
-- [x] `docs/language-spec.md` と `docs/migration-v0.2.md` を v0.3 挙動へ同期する。
+## P0（v0.4 核）
+- [x] `lint` サブコマンドを追加し、`L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-UNUSED-DECL` を実装する。
+- [x] `fmt` サブコマンドを追加し、`--check` / `--stdout` を含む整形契約を実装する。
+- [x] `doc --pdf` を追加し、Pandoc 失敗時に Markdown 成果物を維持して warning 化する。
+- [x] Surface 構文（`syntax: surface` + タグ付きS式 + 日英キーワードエイリアス）を導入し、Core AST へデシュガする。
+- [x] `spec.md` を日本語自然文 + Mermaid 3点セット（型/依存/証明要約）へ更新する。
+- [x] `lint/fmt/doc-pdf` の統合テストを追加する。
 
-## P1
-- [x] `prove` / `doc` まで含む再帰関数サンプルの E2E テストを追加する。
-- [x] 構造減少判定の境界ケース（`let` alias / ネスト `match` / 複数 ADT 引数）をテストマトリクス化する。
+## P1（厳密化・運用）
+- [ ] `L-DUP-MAYBE` を近似スケルトン判定から、有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）へ厳密化する。
+- [ ] `fmt` の `@context` 単位ブロック保持を強化し、複数コンテキストでの安定整形（idempotent）テストを追加する。
+- [x] `docs/migration-v0.2.md` と `docs/troubleshooting-errors-ja.md` に v0.4（`lint/fmt/surface/doc --pdf`）の移行・障害対応を追記する。
+- [ ] CI に `dtl lint --deny-warnings` と `dtl fmt --check` を専用ジョブとして追加する。
+
+## P2（将来）
+- [ ] `L-DUP-MAYBE` の `confidence` 算出を、モデルカバレッジと反例探索結果に基づく指標へ更新する。
+- [ ] Surface 構文の `syntax: auto` 判定衝突ケース（同一ファイル内混在）の診断を改善する（専用コード化）。
 
 ## Archive: v0.2（完了済み）
 - [x] `check/prove/doc` を CI 必須ジョブに反映する。
@@ -33,3 +41,11 @@
 - [x] ベンチ自動実行を CI に組み込む。
 - [x] 日本語サンプル `examples/customer_contract_ja.dtl` の `doc` 生成を E2E テストに追加する。
 - [x] Atom 正規化の仕様境界を明確化する（引用符・エスケープを含む Atom の取り扱いを言語仕様に追記し、対応テストを追加）。
+
+## Archive: v0.3（完了済み）
+- [x] `E-TOTAL` を「全再帰禁止」から「相互再帰禁止 + 自己再帰の構造減少判定」へ移行する。
+- [x] 構造再帰の受理/拒否を固定する単体テストを追加する（tail 再帰正例、非 tail/非減少/相互再帰の負例）。
+- [x] `E-TOTAL` 診断を機械可読化する（`reason` / `arg_indices` など）。
+- [x] `docs/language-spec.md` と `docs/migration-v0.2.md` を v0.3 挙動へ同期する。
+- [x] `prove` / `doc` まで含む再帰関数サンプルの E2E テストを追加する。
+- [x] 構造減少判定の境界ケース（`let` alias / ネスト `match` / 複数 ADT 引数）をテストマトリクス化する。

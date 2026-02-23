@@ -1,15 +1,16 @@
-# エラーコード別トラブルシュート（v0.2）
+# エラーコード別トラブルシュート（v0.4）
 
-この文書は `dtl` v0.2 の主要エラーコードについて、原因と復旧手順を運用視点で整理したものです。
+この文書は `dtl` v0.4 の主要エラーコードと lint warning について、原因と復旧手順を運用視点で整理したものです。
 
 ## 1. 対象バージョン
-- DSL 仕様: v0.2（`docs/language-spec.md` 準拠）
+- DSL 仕様: v0.4（`docs/language-spec.md` 準拠）
 - 実装: `dtl` 本体（Rust, `rust-toolchain.toml` は `1.93.0`）
 
 ## 2. 使い方
 1. まず `check --format json` または `prove --format json` で `diagnostics` を取得する。
-2. `code` ごとに本書の該当節を参照し、再現条件を 1 つずつ潰す。
-3. 最後に `doc` まで通して成果物生成を確認する。
+2. つぎに `lint --format json` で `diagnostics[].lint_code` を確認する。
+3. `code` / `lint_code` ごとに本書の該当節を参照し、再現条件を 1 つずつ潰す。
+4. 最後に `fmt --check` と `doc` まで通して成果物生成を確認する。
 
 ---
 
@@ -119,24 +120,65 @@
 
 ---
 
-## 6. `E-MATCH`
+## 6. `E-TOTAL`
 
 ### 6.1 典型症状
+- `recursive function is not in tail position`
+- `recursive function is not structurally decreasing`
+- `mutual recursion is not allowed`
+
+### 6.2 主な原因
+- 再帰呼び出しが tail position にない
+- `match` 分解した部分値ではなく、元引数や非減少式を再帰に渡している
+- 相互再帰（`f -> g -> f`）を使っている
+
+### 6.3 確認手順
+1. 再帰呼び出しが式の最終位置にあるかを確認する（`if` 条件式や引数式内は非 tail）。
+2. ADT 引数について、`match` で分解した部分値（例: `(s m)` の `m`）を渡しているか確認する。
+3. call graph を確認し、再帰が単一関数の自己再帰に閉じているか確認する。
+
+### 6.4 最小修正例（非減少 -> 減少）
+
+誤り:
+
+```lisp
+(data Nat (z) (s Nat))
+(defn bad ((n Nat)) Bool
+  (match n
+    ((z) true)
+    ((s m) (bad n))))
+```
+
+修正:
+
+```lisp
+(data Nat (z) (s Nat))
+(defn ok ((n Nat)) Bool
+  (match n
+    ((z) true)
+    ((s m) (ok m))))
+```
+
+---
+
+## 7. `E-MATCH`
+
+### 7.1 典型症状
 - 非網羅分岐（`non-exhaustive match`）
 - 到達不能分岐（`unreachable match arm`）
 - constructor パターン型不一致
 
-### 6.2 主な原因
+### 7.2 主な原因
 - ADT constructor の一部しか列挙していない
 - `_` を先頭で使い後続分岐を死文化している
 - パターンの constructor 引数個数が誤っている
 
-### 6.3 確認手順
+### 7.3 確認手順
 1. `data` 宣言の constructor 一覧と `match` 分岐が一致しているか確認する。
 2. `_` は原則末尾に置く。
 3. constructor パターンの子パターン数が定義と一致するか確認する。
 
-### 6.4 最小修正例（非網羅）
+### 7.4 最小修正例（非網羅）
 
 誤り:
 
@@ -159,24 +201,24 @@
 
 ---
 
-## 7. `E-PROVE`
+## 8. `E-PROVE`
 
-### 7.1 典型症状
+### 8.1 典型症状
 - `missing universe declaration for type: ...`
 - `universe ... must not be empty`
 - 反例付きで `status=error`
 
-### 7.2 主な原因
+### 8.2 主な原因
 - 量化変数型に対する `universe` 宣言漏れ
 - `universe` が空集合
 - 仕様（`assert` / `Refine`）を満たす rule/fact が不足
 
-### 7.3 確認手順
+### 8.3 確認手順
 1. `assert` / `defn` パラメータ型すべてに `universe` があるか確認する。
 2. `proof-trace.json` の `counterexample.missing_goals` を最優先で読む。
 3. 欠落ゴールを導出できる `fact` または `rule` を追加し再検証する。
 
-### 7.4 最小修正例（universe 漏れ）
+### 8.4 最小修正例（universe 漏れ）
 
 誤り:
 
@@ -197,9 +239,75 @@
 
 ---
 
-## 8. 運用上の優先順位
+## 9. 運用上の優先順位
 1. `E-PARSE` を最優先で解消する（後続フェーズの意味がないため）。
-2. 次に `E-RESOLVE` / `E-TYPE` / `E-MATCH` を `check` 段階でゼロ化する。
-3. 最後に `E-PROVE` を `proof-trace.json` ベースで解消する。
+2. 次に `E-RESOLVE` / `E-TYPE` / `E-TOTAL` / `E-MATCH` を `check` 段階でゼロ化する。
+3. `E-PROVE` を `proof-trace.json` ベースで解消する。
+4. 最後に `lint` warning（重複/未使用）を解消し、`fmt --check` を通す。
 
 この順を崩すと、誤差分（解析不能な連鎖エラー）で調査コストが増えます。
+
+---
+
+## 10. `L-DUP-EXACT`（lint warning）
+
+### 10.1 典型症状
+- 同一 `fact` / `rule` / `assert` / `defn` が重複警告される
+
+### 10.2 主な原因
+- import 先を含めた二重定義
+- コピー&ペーストによる同一宣言の残骸
+
+### 10.3 確認手順
+1. 警告に出る最初の定義位置（line/column）を確認する。
+2. 意図的重複でない限り片方を削除する。
+3. 差分を `fmt --check` で固定する。
+
+---
+
+## 11. `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE`（lint warning）
+
+### 11.1 典型症状
+- `L-DUP-MAYBE`: 近似同値の重複候補
+- `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
+
+### 11.2 主な原因
+- 変数名や構文だけ異なる同型ロジック
+- `--semantic-dup` 実行時に universe が不足
+
+### 11.3 確認手順
+1. `--semantic-dup` を付けた実行か確認する。
+2. `L-DUP-SKIP-UNIVERSE` が出る場合は不足型の `universe` を追加する。
+3. `L-DUP-MAYBE` は誤検知可能性があるため、意図重複か設計重複かをレビューする。
+
+---
+
+## 12. `L-UNUSED-DECL`（lint warning）
+
+### 12.1 典型症状
+- 未使用 `relation` / `defn` / `sort` / `data` / `universe` が警告される
+
+### 12.2 主な原因
+- 過去仕様の残骸
+- import 再編後の参照切れ
+
+### 12.3 確認手順
+1. 実際に参照されているか検索する。
+2. 将来使用予定がなければ削除する。
+3. 将来使用予定があるなら TODO へ明示する。
+
+---
+
+## 13. `fmt --check` が失敗する
+
+### 13.1 典型症状
+- exit code 1（差分あり）
+
+### 13.2 主な原因
+- フォーマット未適用
+- Surface 形式への未変換（既定レンダリングとの差分）
+
+### 13.3 確認手順
+1. `dtl fmt <FILE>` を実行する。
+2. 再度 `dtl fmt <FILE> --check` を実行する。
+3. CI では `--deny-warnings` と併用して運用する。

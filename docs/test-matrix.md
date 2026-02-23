@@ -1,10 +1,12 @@
-# テストマトリクス（v0.3）
+# テストマトリクス（v0.4）
 
 | ID | 種別 | 入力概要 | 期待結果 | 関連仕様 |
 |---|---|---|---|---|
 | P-01 | parser 正常 | `data/assert/universe/match` を含む構成 | parse 成功 | language-spec §3/§4 |
 | P-02 | parser 異常 | `data` constructor なし | `E-PARSE` | language-spec §3.3 |
 | P-03 | parser 異常 | `match` arm 形状不正 | `E-PARSE` | language-spec §4 |
+| P-04 | parser 正常 | surface タグ構文（`型/データ/関係`） | parse 成功 | language-spec §3.10 |
+| P-05 | parser 異常 | surface 主要フォームでタグ欠落 | `E-PARSE` | language-spec §3.10 |
 | R-01 | resolve 異常 | constructor 重複 | `E-DATA` | language-spec §3.3 |
 | R-02 | resolve 正常 | 再帰 ADT（`(data List (nil) (cons Symbol List))`） | 成功 | language-spec §3.3 |
 | R-03 | resolve 異常 | 未定義 universe 型 | `E-RESOLVE` | language-spec §3.8 |
@@ -30,3 +32,8 @@
 | C-05 | CLI 異常 | `doc` 未証明ケース | exit 1 + 生成抑止 | language-spec §8 |
 | C-06 | CLI 正常 | `doc --format json` 証明成功ケース | `spec.json` / `proof-trace.json` / `doc-index.json` | language-spec §8 |
 | C-07 | CLI 異常 | `check --format json` の `E-TOTAL` | `reason` / `arg_indices` を出力 | language-spec §2.1 |
+| C-08 | CLI 正常 | `lint --format json` 重複ケース | `L-DUP-EXACT` warning を返却 | language-spec §2.1/§10 |
+| C-09 | CLI 異常 | `lint --deny-warnings` | warning ありで exit 1 | language-spec §2 |
+| C-10 | CLI 異常 | `fmt --check` 差分あり | exit 1 | language-spec §2 |
+| C-11 | CLI 正常 | `doc --format markdown --pdf`（pandoc 不足） | Markdown 成果物生成 + warning | language-spec §8 |
+| C-12 | CLI 正常 | `lint --semantic-dup` + universe 不足 | `L-DUP-SKIP-UNIVERSE` warning | language-spec §2/§10 |

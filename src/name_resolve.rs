@@ -61,8 +61,6 @@ pub fn resolve_program(program: &Program) -> Vec<Diagnostic> {
         }
     }
 
-    validate_non_recursive_data(program, &data_map, &mut errors);
-
     let mut relation_arity: HashMap<String, usize> = HashMap::new();
     let mut relation_sorts: HashMap<String, Vec<String>> = HashMap::new();
     for r in &program.relations {
@@ -206,75 +204,6 @@ pub fn resolve_program(program: &Program) -> Vec<Diagnostic> {
     }
 
     errors
-}
-
-fn validate_non_recursive_data<'a>(
-    program: &'a Program,
-    data_map: &HashMap<String, &'a crate::ast::DataDecl>,
-    errors: &mut Vec<Diagnostic>,
-) {
-    let mut edges: HashMap<String, HashSet<String>> = HashMap::new();
-    for d in &program.data_decls {
-        let mut deps = HashSet::new();
-        for ctor in &d.constructors {
-            for field in &ctor.fields {
-                collect_data_deps(field, data_map, &mut deps);
-            }
-        }
-        edges.insert(d.name.clone(), deps);
-    }
-
-    for d in &program.data_decls {
-        let mut visited = HashSet::new();
-        if has_data_cycle(&d.name, &d.name, &edges, &mut visited) {
-            errors.push(Diagnostic::new(
-                "E-DATA",
-                format!("recursive data declaration is not allowed: {}", d.name),
-                Some(d.span.clone()),
-            ));
-        }
-    }
-}
-
-fn collect_data_deps(
-    ty: &Type,
-    data_map: &HashMap<String, &crate::ast::DataDecl>,
-    out: &mut HashSet<String>,
-) {
-    match ty {
-        Type::Domain(name) | Type::Adt(name) => {
-            if data_map.contains_key(name) {
-                out.insert(name.clone());
-            }
-        }
-        Type::Fun(args, ret) => {
-            for arg in args {
-                collect_data_deps(arg, data_map, out);
-            }
-            collect_data_deps(ret, data_map, out);
-        }
-        Type::Refine { base, .. } => collect_data_deps(base, data_map, out),
-        Type::Bool | Type::Int | Type::Symbol => {}
-    }
-}
-
-fn has_data_cycle(
-    root: &str,
-    cur: &str,
-    edges: &HashMap<String, HashSet<String>>,
-    visited: &mut HashSet<String>,
-) -> bool {
-    if let Some(nexts) = edges.get(cur) {
-        for next in nexts {
-            if next == root {
-                return true;
-            }
-            if visited.insert(next.clone()) && has_data_cycle(root, next, edges, visited) {
-                return true;
-            }
-        }
-    }
-    false
 }
 
 fn validate_universes(
