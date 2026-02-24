@@ -53,6 +53,9 @@ cargo run -- check examples/my_first_policy.dtl --format json
 # 初回のみ
 cargo install mdbook --locked
 
+# examples から利用例カタログを自動生成
+./scripts/generate-examples-catalog.sh
+
 # HTML を生成
 ./scripts/docs-site-build.sh
 

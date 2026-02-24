@@ -5,6 +5,8 @@ on:
     paths:
       - "docs-site/**"
       - "docs/**"
+      - "examples/**"
+      - "scripts/generate-examples-catalog.sh"
       - "README.md"
       - ".github/workflows/docs-site.yml"
   push:
@@ -13,6 +15,8 @@ on:
     paths:
       - "docs-site/**"
       - "docs/**"
+      - "examples/**"
+      - "scripts/generate-examples-catalog.sh"
       - "README.md"
       - ".github/workflows/docs-site.yml"
   workflow_dispatch:
@@ -31,6 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: generate examples catalog
+        run: ./scripts/generate-examples-catalog.sh
+      - name: verify generated catalog is committed
+        run: git diff --exit-code docs-site/src/tutorial/examples-catalog.md
       - uses: taiki-e/install-action@mdbook
       - name: build docs site
         run: mdbook build docs-site

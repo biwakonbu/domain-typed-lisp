@@ -33,6 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: generate examples catalog
+        run: ./scripts/generate-examples-catalog.sh
+      - name: verify generated catalog is committed
+        run: git diff --exit-code docs-site/src/tutorial/examples-catalog.md
       - uses: taiki-e/install-action@mdbook
       - name: mdbook build
         run: mdbook build docs-site
