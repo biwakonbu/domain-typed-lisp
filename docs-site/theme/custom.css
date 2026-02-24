@@ -6,7 +6,6 @@
   /* NordDeep style for code blocks only */
   --dtl-code-bg: #2b3448;
   --dtl-code-border: #4c5f81;
-  --dtl-code-topline: #81a1c1;
   --dtl-code-fg: #d8dee9;
   --dtl-code-inline-bg: rgba(76, 95, 129, 0.18);
   --dtl-code-inline-border: rgba(94, 129, 172, 0.5);
@@ -39,18 +38,6 @@ pre {
   box-shadow:
     0 6px 16px rgba(20, 26, 38, 0.25),
     inset 0 1px 0 rgba(236, 239, 244, 0.06);
-}
-
-pre::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 2px;
-  border-radius: 14px 14px 0 0;
-  background-color: var(--dtl-code-topline);
-  opacity: 0.8;
-  pointer-events: none;
 }
 
 pre > code,
