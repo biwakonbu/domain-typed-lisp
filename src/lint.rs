@@ -60,6 +60,9 @@ pub struct LintOptions {
 struct SemanticDupEvidence {
     model_points: usize,
     checked_points: usize,
+    skipped_points: usize,
+    depth_limited_points: usize,
+    eval_depth_limit: Option<usize>,
     counterexample_found: bool,
 }
 
@@ -68,6 +71,27 @@ impl SemanticDupEvidence {
         !self.counterexample_found && self.checked_points > 0
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct FunctionValue {
+    table: Vec<(Vec<EvalValue>, EvalValue)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum EvalValue {
+    Symbol(String),
+    Int(i64),
+    Bool(bool),
+    Adt {
+        ctor: String,
+        fields: Vec<EvalValue>,
+    },
+    Function(FunctionValue),
+}
+
+const BASE_EVAL_DEPTH_LIMIT: usize = 1024;
+const MAX_EVAL_DEPTH_LIMIT: usize = 4096;
+const MAX_FUNCTION_MODEL_VALUES: usize = 4096;
 
 pub fn lint_program(program: &Program, options: LintOptions) -> Vec<LintDiagnostic> {
     let mut out = Vec::new();
@@ -249,6 +273,24 @@ fn lint_semantic_duplicates(program: &Program) -> Vec<LintDiagnostic> {
                     continue;
                 }
                 if let Some(evidence) = defns_semantic_evidence(a, b, &ctx) {
+                    if evidence.depth_limited_points > 0 {
+                        let limit = evidence.eval_depth_limit.unwrap_or(BASE_EVAL_DEPTH_LIMIT);
+                        out.push(LintDiagnostic::warning(
+                            "L-DUP-SKIP-EVAL-DEPTH",
+                            "duplicate",
+                            format!(
+                                "defn {} と {} の評価で深さ上限に到達しました: depth_limit={}, checked={}, skipped={}, depth_limited={}",
+                                a.name,
+                                b.name,
+                                limit,
+                                evidence.checked_points,
+                                evidence.skipped_points,
+                                evidence.depth_limited_points
+                            ),
+                            Some(b.span.clone()),
+                            None,
+                        ));
+                    }
                     if !evidence.equivalent() {
                         continue;
                     }
@@ -396,7 +438,7 @@ fn assertions_semantic_evidence(
     b: &AssertDecl,
     ctx: &SemanticDupContext<'_>,
 ) -> Option<SemanticDupEvidence> {
-    let tuples = enumerate_param_tuples(&a.params, &ctx.universe)?;
+    let tuples = enumerate_const_param_tuples(&a.params, &ctx.universe)?;
     let total = tuples.len();
     let mut checked = 0usize;
 
@@ -410,6 +452,9 @@ fn assertions_semantic_evidence(
             return Some(SemanticDupEvidence {
                 model_points: total,
                 checked_points: checked,
+                skipped_points: total.saturating_sub(checked),
+                depth_limited_points: 0,
+                eval_depth_limit: None,
                 counterexample_found: true,
             });
         }
@@ -417,6 +462,9 @@ fn assertions_semantic_evidence(
     Some(SemanticDupEvidence {
         model_points: total,
         checked_points: checked,
+        skipped_points: total.saturating_sub(checked),
+        depth_limited_points: 0,
+        eval_depth_limit: None,
         counterexample_found: false,
     })
 }
@@ -431,6 +479,9 @@ fn rules_semantic_evidence(
     Some(SemanticDupEvidence {
         model_points: lhs.total_valuations.max(rhs.total_valuations),
         checked_points: lhs.evaluated_valuations.min(rhs.evaluated_valuations),
+        skipped_points: 0,
+        depth_limited_points: 0,
+        eval_depth_limit: None,
         counterexample_found: lhs.tuples != rhs.tuples,
     })
 }
@@ -557,14 +608,20 @@ fn defns_semantic_evidence(
     b: &Defn,
     ctx: &SemanticDupContext<'_>,
 ) -> Option<SemanticDupEvidence> {
-    let tuples = enumerate_param_tuples(&a.params, &ctx.universe)?;
+    let tuples = enumerate_eval_param_tuples(&a.params, &ctx.universe)?;
     let total = tuples.len();
     let mut checked = 0usize;
+    let mut depth_limited_points = 0usize;
+    let eval_depth_limit = adaptive_eval_depth_limit(a, b);
 
     for tuple in tuples {
-        let left = eval_defn_with_tuple(a, &tuple, ctx, 0);
-        let right = eval_defn_with_tuple(b, &tuple, ctx, 0);
+        let mut depth_limited = false;
+        let left = eval_defn_with_tuple(a, &tuple, ctx, 0, eval_depth_limit, &mut depth_limited);
+        let right = eval_defn_with_tuple(b, &tuple, ctx, 0, eval_depth_limit, &mut depth_limited);
         let (Some(left), Some(right)) = (left, right) else {
+            if depth_limited {
+                depth_limited_points += 1;
+            }
             continue;
         };
         checked += 1;
@@ -572,6 +629,9 @@ fn defns_semantic_evidence(
             return Some(SemanticDupEvidence {
                 model_points: total,
                 checked_points: checked,
+                skipped_points: total.saturating_sub(checked),
+                depth_limited_points,
+                eval_depth_limit: Some(eval_depth_limit),
                 counterexample_found: true,
             });
         }
@@ -579,18 +639,59 @@ fn defns_semantic_evidence(
     Some(SemanticDupEvidence {
         model_points: total,
         checked_points: checked,
+        skipped_points: total.saturating_sub(checked),
+        depth_limited_points,
+        eval_depth_limit: Some(eval_depth_limit),
         counterexample_found: false,
     })
 }
 
-const MAX_EVAL_DEPTH: usize = 256;
+fn adaptive_eval_depth_limit(a: &Defn, b: &Defn) -> usize {
+    let complexity = expr_node_count(&a.body).max(expr_node_count(&b.body));
+    BASE_EVAL_DEPTH_LIMIT
+        .saturating_add(complexity.saturating_mul(8))
+        .min(MAX_EVAL_DEPTH_LIMIT)
+}
+
+fn expr_node_count(expr: &Expr) -> usize {
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => 1,
+        Expr::Call { args, .. } => 1 + args.iter().map(expr_node_count).sum::<usize>(),
+        Expr::Let { bindings, body, .. } => {
+            1 + bindings
+                .iter()
+                .map(|(_, bexpr, _)| expr_node_count(bexpr))
+                .sum::<usize>()
+                + expr_node_count(body)
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            1 + expr_node_count(cond) + expr_node_count(then_branch) + expr_node_count(else_branch)
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            1 + expr_node_count(scrutinee)
+                + arms
+                    .iter()
+                    .map(|arm| expr_node_count(&arm.body))
+                    .sum::<usize>()
+        }
+    }
+}
 
 fn eval_defn_with_tuple(
     defn: &Defn,
-    tuple: &[Value],
+    tuple: &[EvalValue],
     ctx: &SemanticDupContext<'_>,
     depth: usize,
-) -> Option<Value> {
+    depth_limit: usize,
+    depth_limited: &mut bool,
+) -> Option<EvalValue> {
     if defn.params.len() != tuple.len() {
         return None;
     }
@@ -598,36 +699,57 @@ fn eval_defn_with_tuple(
     for (param, value) in defn.params.iter().zip(tuple.iter()) {
         env.insert(param.name.clone(), value.clone());
     }
-    eval_expr_with_env(&defn.body, &env, ctx, depth)
+    eval_expr_with_env(&defn.body, &env, ctx, depth, depth_limit, depth_limited)
 }
 
 fn eval_expr_with_env(
     expr: &Expr,
-    env: &HashMap<String, Value>,
+    env: &HashMap<String, EvalValue>,
     ctx: &SemanticDupContext<'_>,
     depth: usize,
-) -> Option<Value> {
-    if depth > MAX_EVAL_DEPTH {
+    depth_limit: usize,
+    depth_limited: &mut bool,
+) -> Option<EvalValue> {
+    if depth > depth_limit {
+        *depth_limited = true;
         return None;
     }
 
     match expr {
         Expr::Var { name, .. } => env.get(name).cloned(),
-        Expr::Symbol { value, .. } => Some(Value::Symbol(value.clone())),
-        Expr::Int { value, .. } => Some(Value::Int(*value)),
-        Expr::Bool { value, .. } => Some(Value::Bool(*value)),
+        Expr::Symbol { value, .. } => Some(EvalValue::Symbol(value.clone())),
+        Expr::Int { value, .. } => Some(EvalValue::Int(*value)),
+        Expr::Bool { value, .. } => Some(EvalValue::Bool(*value)),
         Expr::Call { name, args, .. } => {
             let mut values = Vec::new();
             for arg in args {
-                values.push(eval_expr_with_env(arg, env, ctx, depth + 1)?);
+                values.push(eval_expr_with_env(
+                    arg,
+                    env,
+                    ctx,
+                    depth + 1,
+                    depth_limit,
+                    depth_limited,
+                )?);
+            }
+
+            if let Some(EvalValue::Function(fun)) = env.get(name) {
+                return apply_function_value(fun, &values);
             }
 
             if let Some(idx) = ctx.defn_indices.get(name).copied() {
                 let defn = &ctx.program.defns[idx];
-                return eval_defn_with_tuple(defn, &values, ctx, depth + 1);
+                return eval_defn_with_tuple(
+                    defn,
+                    &values,
+                    ctx,
+                    depth + 1,
+                    depth_limit,
+                    depth_limited,
+                );
             }
             if ctx.constructor_sigs.contains_key(name) {
-                return Some(Value::Adt {
+                return Some(EvalValue::Adt {
                     ctor: name.clone(),
                     fields: values,
                 });
@@ -636,23 +758,28 @@ fn eval_expr_with_env(
                 if schema.len() != values.len() {
                     return None;
                 }
+                let tuple = values
+                    .iter()
+                    .map(eval_to_concrete)
+                    .collect::<Option<Vec<_>>>()?;
                 let exists = ctx
                     .derived
                     .facts
                     .get(name)
-                    .map(|set| set.contains(&values))
+                    .map(|set| set.contains(&tuple))
                     .unwrap_or(false);
-                return Some(Value::Bool(exists));
+                return Some(EvalValue::Bool(exists));
             }
             None
         }
         Expr::Let { bindings, body, .. } => {
             let mut local = env.clone();
             for (name, bexpr, _) in bindings {
-                let value = eval_expr_with_env(bexpr, &local, ctx, depth + 1)?;
+                let value =
+                    eval_expr_with_env(bexpr, &local, ctx, depth + 1, depth_limit, depth_limited)?;
                 local.insert(name.clone(), value);
             }
-            eval_expr_with_env(body, &local, ctx, depth + 1)
+            eval_expr_with_env(body, &local, ctx, depth + 1, depth_limit, depth_limited)
         }
         Expr::If {
             cond,
@@ -660,34 +787,89 @@ fn eval_expr_with_env(
             else_branch,
             ..
         } => {
-            let cond_value = eval_expr_with_env(cond, env, ctx, depth + 1)?;
+            let cond_value =
+                eval_expr_with_env(cond, env, ctx, depth + 1, depth_limit, depth_limited)?;
             match cond_value {
-                Value::Bool(true) => eval_expr_with_env(then_branch, env, ctx, depth + 1),
-                Value::Bool(false) => eval_expr_with_env(else_branch, env, ctx, depth + 1),
+                EvalValue::Bool(true) => {
+                    eval_expr_with_env(then_branch, env, ctx, depth + 1, depth_limit, depth_limited)
+                }
+                EvalValue::Bool(false) => {
+                    eval_expr_with_env(else_branch, env, ctx, depth + 1, depth_limit, depth_limited)
+                }
                 _ => None,
             }
         }
         Expr::Match {
             scrutinee, arms, ..
         } => {
-            let target = eval_expr_with_env(scrutinee, env, ctx, depth + 1)?;
+            let target =
+                eval_expr_with_env(scrutinee, env, ctx, depth + 1, depth_limit, depth_limited)?;
             for arm in arms {
                 let mut captures = HashMap::new();
-                if !matches_pattern(&arm.pattern, &target, &mut captures) {
+                if !matches_pattern_eval(&arm.pattern, &target, &mut captures) {
                     continue;
                 }
                 let mut local = env.clone();
                 for (name, value) in captures {
                     local.insert(name, value);
                 }
-                return eval_expr_with_env(&arm.body, &local, ctx, depth + 1);
+                return eval_expr_with_env(
+                    &arm.body,
+                    &local,
+                    ctx,
+                    depth + 1,
+                    depth_limit,
+                    depth_limited,
+                );
             }
             None
         }
     }
 }
 
-fn matches_pattern(pattern: &Pattern, target: &Value, binds: &mut HashMap<String, Value>) -> bool {
+fn apply_function_value(fun: &FunctionValue, args: &[EvalValue]) -> Option<EvalValue> {
+    fun.table
+        .iter()
+        .find(|(inputs, _)| inputs == args)
+        .map(|(_, output)| output.clone())
+}
+
+fn eval_to_concrete(value: &EvalValue) -> Option<Value> {
+    match value {
+        EvalValue::Symbol(s) => Some(Value::Symbol(s.clone())),
+        EvalValue::Int(i) => Some(Value::Int(*i)),
+        EvalValue::Bool(b) => Some(Value::Bool(*b)),
+        EvalValue::Adt { ctor, fields } => {
+            let concrete_fields = fields
+                .iter()
+                .map(eval_to_concrete)
+                .collect::<Option<Vec<_>>>()?;
+            Some(Value::Adt {
+                ctor: ctor.clone(),
+                fields: concrete_fields,
+            })
+        }
+        EvalValue::Function(_) => None,
+    }
+}
+
+fn concrete_to_eval(value: &Value) -> EvalValue {
+    match value {
+        Value::Symbol(s) => EvalValue::Symbol(s.clone()),
+        Value::Int(i) => EvalValue::Int(*i),
+        Value::Bool(b) => EvalValue::Bool(*b),
+        Value::Adt { ctor, fields } => EvalValue::Adt {
+            ctor: ctor.clone(),
+            fields: fields.iter().map(concrete_to_eval).collect(),
+        },
+    }
+}
+
+fn matches_pattern_eval(
+    pattern: &Pattern,
+    target: &EvalValue,
+    binds: &mut HashMap<String, EvalValue>,
+) -> bool {
     match pattern {
         Pattern::Wildcard { .. } => true,
         Pattern::Var { name, .. } => {
@@ -698,18 +880,18 @@ fn matches_pattern(pattern: &Pattern, target: &Value, binds: &mut HashMap<String
                 true
             }
         }
-        Pattern::Symbol { value, .. } => matches!(target, Value::Symbol(s) if s == value),
-        Pattern::Int { value, .. } => matches!(target, Value::Int(i) if i == value),
-        Pattern::Bool { value, .. } => matches!(target, Value::Bool(b) if b == value),
+        Pattern::Symbol { value, .. } => matches!(target, EvalValue::Symbol(s) if s == value),
+        Pattern::Int { value, .. } => matches!(target, EvalValue::Int(i) if i == value),
+        Pattern::Bool { value, .. } => matches!(target, EvalValue::Bool(b) if b == value),
         Pattern::Ctor { name, args, .. } => {
-            let Value::Adt { ctor, fields } = target else {
+            let EvalValue::Adt { ctor, fields } = target else {
                 return false;
             };
             if name != ctor || args.len() != fields.len() {
                 return false;
             }
             for (p, value) in args.iter().zip(fields.iter()) {
-                if !matches_pattern(p, value, binds) {
+                if !matches_pattern_eval(p, value, binds) {
                     return false;
                 }
             }
@@ -750,7 +932,7 @@ fn bind_params(params: &[Param], values: &[Value]) -> HashMap<String, Value> {
         .collect()
 }
 
-fn enumerate_param_tuples(
+fn enumerate_const_param_tuples(
     params: &[Param],
     universe: &HashMap<String, Vec<Value>>,
 ) -> Option<Vec<Vec<Value>>> {
@@ -763,17 +945,134 @@ fn enumerate_param_tuples(
         }
         domains.push(values.clone());
     }
+    Some(enumerate_tuples(&domains))
+}
 
-    let mut out = Vec::new();
-    enumerate_tuples(&domains, 0, &mut Vec::new(), &mut out);
+fn enumerate_eval_param_tuples(
+    params: &[Param],
+    universe: &HashMap<String, Vec<Value>>,
+) -> Option<Vec<Vec<EvalValue>>> {
+    let mut domains = Vec::new();
+    let mut cache = HashMap::new();
+    for param in params {
+        let values = enumerate_eval_values_for_type(&param.ty, universe, &mut cache)?;
+        if values.is_empty() {
+            return None;
+        }
+        domains.push(values);
+    }
+    Some(enumerate_tuples(&domains))
+}
+
+fn enumerate_eval_values_for_type(
+    ty: &Type,
+    universe: &HashMap<String, Vec<Value>>,
+    cache: &mut HashMap<Type, Vec<EvalValue>>,
+) -> Option<Vec<EvalValue>> {
+    let normalized = match ty {
+        Type::Refine { base, .. } => base.as_ref().clone(),
+        _ => ty.clone(),
+    };
+    if let Some(cached) = cache.get(&normalized) {
+        return Some(cached.clone());
+    }
+
+    let values = match &normalized {
+        Type::Bool => universe
+            .get("Bool")?
+            .iter()
+            .map(concrete_to_eval)
+            .collect::<Vec<_>>(),
+        Type::Int => universe
+            .get("Int")?
+            .iter()
+            .map(concrete_to_eval)
+            .collect::<Vec<_>>(),
+        Type::Symbol => universe
+            .get("Symbol")?
+            .iter()
+            .map(concrete_to_eval)
+            .collect::<Vec<_>>(),
+        Type::Domain(name) | Type::Adt(name) => universe
+            .get(name)?
+            .iter()
+            .map(concrete_to_eval)
+            .collect::<Vec<_>>(),
+        Type::Fun(args, ret) => enumerate_function_values(args, ret, universe, cache)?,
+        Type::Refine { .. } => unreachable!(),
+    };
+    cache.insert(normalized, values.clone());
+    Some(values)
+}
+
+fn enumerate_function_values(
+    args: &[Type],
+    ret: &Type,
+    universe: &HashMap<String, Vec<Value>>,
+    cache: &mut HashMap<Type, Vec<EvalValue>>,
+) -> Option<Vec<EvalValue>> {
+    let mut arg_domains = Vec::new();
+    for arg in args {
+        let values = enumerate_eval_values_for_type(arg, universe, cache)?;
+        if values.is_empty() {
+            return None;
+        }
+        arg_domains.push(values);
+    }
+    let input_tuples = enumerate_tuples(&arg_domains);
+    let output_values = enumerate_eval_values_for_type(ret, universe, cache)?;
+    if output_values.is_empty() {
+        return None;
+    }
+
+    let output_count = output_values.len();
+    let exponent = u32::try_from(input_tuples.len()).ok()?;
+    let total = output_count.checked_pow(exponent)?;
+    if total > MAX_FUNCTION_MODEL_VALUES {
+        return None;
+    }
+
+    let mut out = Vec::with_capacity(total);
+    let mut selectors = vec![0usize; input_tuples.len()];
+    loop {
+        let table = input_tuples
+            .iter()
+            .enumerate()
+            .map(|(idx, input)| (input.clone(), output_values[selectors[idx]].clone()))
+            .collect::<Vec<_>>();
+        out.push(EvalValue::Function(FunctionValue { table }));
+        if !increment_digits(&mut selectors, output_count) {
+            break;
+        }
+    }
     Some(out)
 }
 
-fn enumerate_tuples(
-    domains: &[Vec<Value>],
+fn increment_digits(digits: &mut [usize], base: usize) -> bool {
+    if digits.is_empty() {
+        return false;
+    }
+    for digit in digits {
+        *digit += 1;
+        if *digit < base {
+            return true;
+        }
+        *digit = 0;
+    }
+    false
+}
+
+fn enumerate_tuples<T: Clone>(domains: &[Vec<T>]) -> Vec<Vec<T>> {
+    let mut out = Vec::new();
+    enumerate_tuples_inner(domains, 0, &mut Vec::new(), &mut out);
+    out
+}
+
+fn enumerate_tuples_inner<T: Clone>(
+    domains: &[Vec<T>],
     idx: usize,
-    current: &mut Vec<Value>,
-    out: &mut Vec<Vec<Value>>,
+    current: &mut Vec<T>,
+    out: &mut Vec<Vec<T>>,
 ) {
     if idx == domains.len() {
         out.push(current.clone());
@@ -782,7 +1081,7 @@ fn enumerate_tuples(
 
     for value in &domains[idx] {
         current.push(value.clone());
-        enumerate_tuples(domains, idx + 1, current, out);
+        enumerate_tuples_inner(domains, idx + 1, current, out);
         current.pop();
     }
 }

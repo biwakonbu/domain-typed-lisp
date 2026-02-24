@@ -892,7 +892,7 @@ fn parse_tag_pairs<'a>(
             Some(make_span(src, s, e)),
         ));
     }
-    if (list.len() - start_idx) % 2 != 0 {
+    if !(list.len() - start_idx).is_multiple_of(2) {
         let (s, e) = list[start_idx].span_bounds();
         return Err(Diagnostic::new(
             "E-PARSE",

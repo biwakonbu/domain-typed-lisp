@@ -315,11 +315,11 @@ fn assign_imports(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.imports.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.imports.push(item);
+            continue;
         }
         prelude.imports.push(item);
     }
@@ -332,11 +332,11 @@ fn assign_sorts(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.sorts.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.sorts.push(item);
+            continue;
         }
         prelude.sorts.push(item);
     }
@@ -349,11 +349,11 @@ fn assign_data_decls(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.data_decls.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.data_decls.push(item);
+            continue;
         }
         prelude.data_decls.push(item);
     }
@@ -366,11 +366,11 @@ fn assign_relations(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.relations.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.relations.push(item);
+            continue;
         }
         prelude.relations.push(item);
     }
@@ -383,11 +383,11 @@ fn assign_facts(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.facts.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.facts.push(item);
+            continue;
         }
         prelude.facts.push(item);
     }
@@ -400,11 +400,11 @@ fn assign_rules(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.rules.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.rules.push(item);
+            continue;
         }
         prelude.rules.push(item);
     }
@@ -417,11 +417,11 @@ fn assign_asserts(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.asserts.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.asserts.push(item);
+            continue;
         }
         prelude.asserts.push(item);
     }
@@ -434,11 +434,11 @@ fn assign_universes(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.universes.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.universes.push(item);
+            continue;
         }
         prelude.universes.push(item);
     }
@@ -451,11 +451,11 @@ fn assign_defns(
     blocks: &mut [(String, ContextForms)],
 ) {
     for (idx, item) in items.into_iter().enumerate() {
-        if let Some(block_idx) = contexts.get(idx).copied().flatten() {
-            if let Some((_, forms)) = blocks.get_mut(block_idx) {
-                forms.defns.push(item);
-                continue;
-            }
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.defns.push(item);
+            continue;
         }
         prelude.defns.push(item);
     }

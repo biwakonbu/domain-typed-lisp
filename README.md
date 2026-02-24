@@ -8,6 +8,7 @@
 - 静的検査: 型整合・層化否定・`match` 網羅性・全域性（構造再帰判定）
 - lint: 重複候補検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）
   - `L-DUP-MAYBE` は有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）
+  - 深い再帰で比較不能な入力点は `L-DUP-SKIP-EVAL-DEPTH` で可視化
   - `confidence` はモデルカバレッジ + 反例探索結果に基づく動的スコア（0.00-0.99）
 - format: Surface 形式への正規化整形（in-place / check / stdout）
   - `@context` ブロックを保持し、複数コンテキストでも idempotent 整形
@@ -38,10 +39,31 @@ cargo run -- prove examples/complex_policy_import_entry.dtl --format json --out 
 
 # semantic duplicate 厳密判定サンプル
 cargo run -- lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
+cargo run -- lint examples/semantic_dup_function_param.dtl --format json --semantic-dup
 
 # ネスト match + let alias 構造再帰サンプル
 cargo run -- check examples/recursive_nested_ok.dtl --format json
+
+# 最小チュートリアルサンプル
+cargo run -- check examples/my_first_policy.dtl --format json
 ```
+
+## ドキュメントサイト（HTML）
+```bash
+# 初回のみ
+cargo install mdbook --locked
+
+# HTML を生成
+./scripts/docs-site-build.sh
+
+# ローカル確認
+./scripts/docs-site-serve.sh
+```
+
+- 設定: `docs-site/book.toml`
+- 目次: `docs-site/src/SUMMARY.md`
+- 生成物: `docs-site/book/index.html`
+- GitHub Pages 運用: `.github/workflows/docs-site.yml`
 
 ## CLI
 
@@ -87,12 +109,14 @@ dtl fmt <FILE>... [--check] [--stdout]
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --bins --tests
+mdbook build docs-site
 cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot
 cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot
 cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot
 ```
 
 ## ドキュメント
+- [ドキュメントサイト目次（mdBook）](docs-site/src/SUMMARY.md)
 - [言語仕様 v0.4](docs/language-spec.md)
 - [言語解説ガイド v0.4](docs/language-guide-ja.md)
 - [エラーコード別トラブルシュート v0.4](docs/troubleshooting-errors-ja.md)

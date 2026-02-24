@@ -1,0 +1,52 @@
+name: docs-site
+
+on:
+  pull_request:
+    paths:
+      - "docs-site/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/docs-site.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs-site/**"
+      - "docs/**"
+      - "README.md"
+      - ".github/workflows/docs-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@mdbook
+      - name: build docs site
+        run: mdbook build docs-site
+      - name: upload pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/book
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -43,3 +43,5 @@
 | C-15 | E2E 正常 | `complex_policy_import_entry.dtl`（import + Surface + prove） | `check/prove` とも `status=ok` | language-spec §2/§3/§8 |
 | C-16 | E2E 正常 | `recursive_nested_ok.dtl`（ネスト `match` + `let` alias 再帰） | `check/prove` とも `status=ok` | language-spec §7 |
 | C-17 | CLI 正常 | `lint --semantic-dup`（探索量差分あり同値 assert） | `confidence` が探索量に応じて増加 | language-spec §10 |
+| C-18 | CLI 正常 | `lint --semantic-dup`（function 型パラメータ defn） | `L-DUP-MAYBE` を返却 | language-spec §10 |
+| C-19 | CLI 正常 | `lint --semantic-dup`（深い再帰 defn） | `L-DUP-SKIP-EVAL-DEPTH` warning | language-spec §10 |

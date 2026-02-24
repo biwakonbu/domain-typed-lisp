@@ -1,0 +1,11 @@
+(sort Subject)
+(relation allowed (Subject))
+(fact allowed alice)
+
+(defn can-read ((u Subject)) Bool
+  (allowed u))
+
+(assert allowed-is-readable ((u Subject))
+  (allowed u))
+
+(universe Subject (alice bob))

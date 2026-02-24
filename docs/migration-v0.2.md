@@ -59,6 +59,7 @@ dtl lint path/to/file.dtl --format json --semantic-dup
 - `L-DUP-MAYBE`: 有限モデルでの双方向検証による重複候補（`--semantic-dup`）
   - `confidence` はモデルカバレッジ + 反例探索結果ベースで動的算出（0.00〜0.99）
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
+- `L-DUP-SKIP-EVAL-DEPTH`: `defn` 比較中に評価深さ上限へ到達
 - `L-UNUSED-DECL`: 未使用宣言
 
 ### 2.5 fmt を導入する場合

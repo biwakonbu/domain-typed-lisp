@@ -166,6 +166,7 @@ cargo run -- lint examples/customer_contract_ja.dtl --format json
 - `L-DUP-EXACT`: 確定重複
 - `L-DUP-MAYBE`: 有限モデルでの双方向検証による重複候補（`--semantic-dup`）
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定を universe 不足でスキップ
+- `L-DUP-SKIP-EVAL-DEPTH`: `defn` 比較で評価深さ上限に到達した入力点をスキップ
 - `L-UNUSED-DECL`: 未使用宣言
 - `--deny-warnings` を付けると warning で exit 1
 
@@ -323,8 +324,8 @@ strict subterm 判定の境界（`let` alias、ネスト `match`）を再現で�
 ## 13. 既知の制約（2026-02-23 時点）
 
 - `L-DUP-MAYBE` の `confidence` は近似指標であり、確率的保証値ではない（モデル境界と評価可能性に依存）。
-- `--semantic-dup` は function 型パラメータを列挙できないため、該当 `defn` の厳密比較はスキップされる。
-- `defn` 同値評価には深さ上限（`MAX_EVAL_DEPTH=256`）があるため、非常に深い再帰では比較不能になる可能性がある。
+- function 型を含む `defn` 同値評価は有限関数モデル列挙を行うため、`universe` の組み合わせが大きいと探索コストが急増する。
+- 深い再帰では `L-DUP-SKIP-EVAL-DEPTH` が出る場合がある。`depth_limit`/`checked`/`skipped` を確認し、必要なら入力モデル（`universe`）を調整する。
 
 ## 14. 参考ドキュメント
 - 形式仕様: `docs/language-spec.md`

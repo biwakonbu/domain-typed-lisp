@@ -402,11 +402,12 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
         };
         if formatted != src {
             has_diff = true;
-            if !check && !stdout {
-                if let Err(err) = fs::write(file, formatted.as_bytes()) {
-                    eprintln!("{}: E-IO: failed to write file: {err}", file.display());
-                    return 1;
-                }
+            if !check
+                && !stdout
+                && let Err(err) = fs::write(file, formatted.as_bytes())
+            {
+                eprintln!("{}: E-IO: failed to write file: {err}", file.display());
+                return 1;
             }
         }
         if stdout {

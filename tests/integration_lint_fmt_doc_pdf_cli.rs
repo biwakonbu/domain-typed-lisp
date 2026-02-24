@@ -4,6 +4,14 @@ use serde_json::Value;
 use std::fs;
 use tempfile::tempdir;
 
+fn nested_nat(depth: usize) -> String {
+    let mut out = "(zero)".to_string();
+    for _ in 0..depth {
+        out = format!("(succ {out})");
+    }
+    out
+}
+
 #[test]
 fn cli_lint_reports_duplicate_fact_in_json() {
     let dir = tempdir().expect("tempdir");
@@ -285,6 +293,96 @@ fn cli_lint_semantic_dup_confidence_scales_with_model_search() {
     assert!(small_conf > 0.0);
     assert!(large_conf <= 0.99);
     assert!(large_conf > small_conf);
+}
+
+#[test]
+fn cli_lint_semantic_dup_handles_function_typed_defn_params() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("semantic_fun_param_equivalent.dtl");
+    fs::write(
+        &src,
+        r#"
+        (defn passthrough_a ((f (-> (Symbol) Bool))) (-> (Symbol) Bool) f)
+        (defn passthrough_b ((g (-> (Symbol) Bool))) (-> (Symbol) Bool) (if true g g))
+
+        (universe Symbol (alice bob))
+        (universe Bool (true false))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    let diags = value["diagnostics"].as_array().expect("array");
+    assert!(diags.iter().any(|d| {
+        d["lint_code"] == "L-DUP-MAYBE"
+            && d["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("defn passthrough_a と passthrough_b")
+    }));
+}
+
+#[test]
+fn cli_lint_semantic_dup_reports_depth_limit_warning() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("semantic_depth_limit.dtl");
+    let deep_nat = nested_nat(1300);
+    let body = format!(
+        r#"
+        (data Nat (zero) (succ Nat))
+
+        (defn loop_a ((n Nat)) Bool
+          (match n
+            ((zero) true)
+            ((succ m) (loop_a m))))
+        (defn loop_b ((n Nat)) Bool
+          (match n
+            ((zero) true)
+            ((succ m) (loop_b m))))
+
+        (universe Nat ({deep_nat}))
+        "#
+    );
+    fs::write(&src, body).expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("lint")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--semantic-dup")
+        .assert()
+        .success()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    let diags = value["diagnostics"].as_array().expect("array");
+    assert!(diags.iter().any(|d| {
+        d["lint_code"] == "L-DUP-SKIP-EVAL-DEPTH"
+            && d["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("loop_a と loop_b")
+    }));
+    assert!(!diags.iter().any(|d| d["lint_code"] == "L-DUP-MAYBE"));
 }
 
 #[test]

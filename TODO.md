@@ -2,10 +2,10 @@
 
 最終更新: 2026-02-23
 
-残件: 3
+残件: 0
 
 ## P0（v0.4 核）
-- [x] `lint` サブコマンドを追加し、`L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-UNUSED-DECL` を実装する。
+- [x] `lint` サブコマンドを追加し、`L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH` / `L-UNUSED-DECL` を実装する。
 - [x] `fmt` サブコマンドを追加し、`--check` / `--stdout` を含む整形契約を実装する。
 - [x] `doc --pdf` を追加し、Pandoc 失敗時に Markdown 成果物を維持して warning 化する。
 - [x] Surface 構文（`syntax: surface` + タグ付きS式 + 日英キーワードエイリアス）を導入し、Core AST へデシュガする。
@@ -23,9 +23,9 @@
 - [x] Surface 構文の `syntax: auto` 判定衝突ケース（同一ファイル内混在）の診断を改善する（専用コード化）。
 
 ## P3（現時点の課題）
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` を通す（現状: `src/fmt.rs` の `collapsible_if` 指摘で失敗）。
-- [ ] `--semantic-dup` で function 型パラメータを含む `defn` の同値比較を可能にする（現状は比較スキップ）。
-- [ ] `--semantic-dup` の `defn` 同値評価で深い再帰を安全に扱えるようにする（`MAX_EVAL_DEPTH=256` 依存を緩和/可視化）。
+- [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings` を通す（`collapsible_if`/`manual_is_multiple_of` 対応 + `result_large_err` 方針を crate 属性で明示）。
+- [x] `--semantic-dup` で function 型パラメータを含む `defn` の同値比較を可能にする（有限関数モデル列挙 + `defn` 評価器の function 値対応）。
+- [x] `--semantic-dup` の `defn` 同値評価で深い再帰を安全に扱えるようにする（深さ上限を適応化し、`L-DUP-SKIP-EVAL-DEPTH` で可視化）。
 
 ## Archive: v0.2（完了済み）
 - [x] `check/prove/doc` を CI 必須ジョブに反映する。
