@@ -818,3 +818,530 @@ fn render_pattern(pattern: &Pattern) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{ConstructorDecl, MatchArm, Param};
+    use crate::diagnostics::Span;
+
+    fn span() -> Span {
+        Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+            file_id: None,
+        }
+    }
+
+    #[test]
+    fn canonical_top_level_kind_supports_aliases() {
+        assert!(matches!(
+            canonical_top_level_kind("import"),
+            Some(TopLevelKind::Import)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("インポート"),
+            Some(TopLevelKind::Import)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("sort"),
+            Some(TopLevelKind::Sort)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("型"),
+            Some(TopLevelKind::Sort)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("data"),
+            Some(TopLevelKind::Data)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("データ"),
+            Some(TopLevelKind::Data)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("relation"),
+            Some(TopLevelKind::Relation)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("関係"),
+            Some(TopLevelKind::Relation)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("fact"),
+            Some(TopLevelKind::Fact)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("事実"),
+            Some(TopLevelKind::Fact)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("rule"),
+            Some(TopLevelKind::Rule)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("規則"),
+            Some(TopLevelKind::Rule)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("assert"),
+            Some(TopLevelKind::Assert)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("検証"),
+            Some(TopLevelKind::Assert)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("universe"),
+            Some(TopLevelKind::Universe)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("宇宙"),
+            Some(TopLevelKind::Universe)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("defn"),
+            Some(TopLevelKind::Defn)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("関数"),
+            Some(TopLevelKind::Defn)
+        ));
+        assert!(canonical_top_level_kind("unknown").is_none());
+    }
+
+    #[test]
+    fn parse_and_collect_context_assignments_are_stable() {
+        assert_eq!(parse_context_marker(" @context: ops "), Some("ops"));
+        assert_eq!(parse_context_marker("@context: "), None);
+        assert_eq!(parse_context_marker("noop"), None);
+
+        let src = r#"
+            ; @context: prelude
+            (import "a.dtl")
+            (sort Subject)
+            (data User (alice) (bob))
+            ; @context: app
+            (relation allowed (Subject))
+            (fact allowed alice)
+            (rule (allowed ?x) (and (allowed ?x) true))
+            (assert ok ((u Subject)) (and (allowed u) (not false)))
+            (universe Subject (alice bob))
+            (defn can ((u Subject)) Bool (if true (allowed u) false))
+        "#;
+        let assignments = collect_context_assignments(src);
+
+        assert_eq!(assignments.block_names, vec!["prelude", "app"]);
+        assert_eq!(assignments.imports, vec![Some(0)]);
+        assert_eq!(assignments.sorts, vec![Some(0)]);
+        assert_eq!(assignments.data_decls, vec![Some(0)]);
+        assert_eq!(assignments.relations, vec![Some(1)]);
+        assert_eq!(assignments.facts, vec![Some(1)]);
+        assert_eq!(assignments.rules, vec![Some(1)]);
+        assert_eq!(assignments.asserts, vec![Some(1)]);
+        assert_eq!(assignments.universes, vec![Some(1)]);
+        assert_eq!(assignments.defns, vec![Some(1)]);
+    }
+
+    #[test]
+    fn consume_head_atom_and_form_end_cover_edge_cases() {
+        let mut end_it = "".char_indices().peekable();
+        let mut depth = 1usize;
+        assert_eq!(consume_head_atom(&mut end_it, &mut depth), "");
+        assert_eq!(depth, 1);
+
+        let mut ws_comment_it = "  ; note\nrule ?x)".char_indices().peekable();
+        depth = 1;
+        assert_eq!(consume_head_atom(&mut ws_comment_it, &mut depth), "rule");
+        assert_eq!(depth, 1);
+
+        let mut open_it = "(nested".char_indices().peekable();
+        depth = 1;
+        assert_eq!(consume_head_atom(&mut open_it, &mut depth), "");
+        assert_eq!(depth, 2);
+
+        let mut close_it = ")".char_indices().peekable();
+        depth = 1;
+        assert_eq!(consume_head_atom(&mut close_it, &mut depth), "");
+        assert_eq!(depth, 0);
+
+        let mut consume_it = " foo ; cmt\n(bar)) trailing".char_indices().peekable();
+        depth = 1;
+        consume_to_form_end(&mut consume_it, &mut depth);
+        assert_eq!(depth, 0);
+    }
+
+    #[test]
+    fn render_helpers_cover_all_variants() {
+        let atom_rule = Atom {
+            pred: "p".to_string(),
+            terms: vec![
+                LogicTerm::Var("x".to_string()),
+                LogicTerm::Symbol("alice".to_string()),
+                LogicTerm::Int(42),
+                LogicTerm::Bool(true),
+                LogicTerm::Ctor {
+                    name: "cons".to_string(),
+                    args: vec![LogicTerm::Ctor {
+                        name: "nil".to_string(),
+                        args: vec![],
+                    }],
+                },
+            ],
+        };
+
+        let formula = Formula::And(vec![
+            Formula::True,
+            Formula::Atom(atom_rule.clone()),
+            Formula::Not(Box::new(Formula::Atom(Atom {
+                pred: "q".to_string(),
+                terms: vec![],
+            }))),
+        ]);
+
+        let ty = Type::Refine {
+            var: "x".to_string(),
+            base: Box::new(Type::Fun(
+                vec![
+                    Type::Bool,
+                    Type::Int,
+                    Type::Symbol,
+                    Type::Domain("User".to_string()),
+                    Type::Adt("Tree".to_string()),
+                ],
+                Box::new(Type::Bool),
+            )),
+            formula: formula.clone(),
+        };
+
+        let rendered_type = render_type(&ty);
+        assert!(rendered_type.contains("(Refine x"));
+        assert!(rendered_type.contains("(-> (Bool Int Symbol User (Adt Tree)) Bool)"));
+
+        let rendered_formula_rule = render_formula_rule(&formula);
+        assert!(rendered_formula_rule.contains("(and"));
+        assert!(rendered_formula_rule.contains("(not (q))"));
+        assert!(rendered_formula_rule.contains("?x"));
+
+        let rendered_formula_refine = render_formula_refine(&formula);
+        assert!(rendered_formula_refine.contains("(and"));
+        assert!(rendered_formula_refine.contains("(not (q))"));
+        assert!(rendered_formula_refine.contains("x"));
+
+        assert_eq!(render_atom_rule(&Atom {
+            pred: "z".to_string(),
+            terms: vec![],
+        }), "(z)");
+        assert_eq!(render_atom_refine(&Atom {
+            pred: "z".to_string(),
+            terms: vec![],
+        }), "(z)");
+
+        let term_ctor_no_args = LogicTerm::Ctor {
+            name: "nil".to_string(),
+            args: vec![],
+        };
+        assert_eq!(render_logic_term_rule(&term_ctor_no_args), "(nil)");
+        assert_eq!(render_logic_term_refine(&term_ctor_no_args), "(nil)");
+        assert_eq!(render_logic_term(&term_ctor_no_args), "(nil)");
+    }
+
+    #[test]
+    fn render_expr_and_pattern_cover_all_variants() {
+        let call0 = Expr::Call {
+            name: "f0".to_string(),
+            args: vec![],
+            span: span(),
+        };
+        let call1 = Expr::Call {
+            name: "f1".to_string(),
+            args: vec![Expr::Var {
+                name: "x".to_string(),
+                span: span(),
+            }],
+            span: span(),
+        };
+
+        assert_eq!(render_expr(&Expr::Var {
+            name: "v".to_string(),
+            span: span(),
+        }), "v");
+        assert_eq!(render_expr(&Expr::Symbol {
+            value: "sym".to_string(),
+            span: span(),
+        }), "sym");
+        assert_eq!(render_expr(&Expr::Int {
+            value: 7,
+            span: span(),
+        }), "7");
+        assert_eq!(render_expr(&Expr::Bool {
+            value: false,
+            span: span(),
+        }), "false");
+        assert_eq!(render_expr(&call0), "(f0)");
+        assert_eq!(render_expr(&call1), "(f1 x)");
+
+        let let_expr = Expr::Let {
+            bindings: vec![(
+                "a".to_string(),
+                Expr::Int {
+                    value: 1,
+                    span: span(),
+                },
+                span(),
+            )],
+            body: Box::new(Expr::Var {
+                name: "a".to_string(),
+                span: span(),
+            }),
+            span: span(),
+        };
+        assert_eq!(render_expr(&let_expr), "(let ((a 1)) a)");
+
+        let if_expr = Expr::If {
+            cond: Box::new(Expr::Bool {
+                value: true,
+                span: span(),
+            }),
+            then_branch: Box::new(Expr::Int {
+                value: 1,
+                span: span(),
+            }),
+            else_branch: Box::new(Expr::Int {
+                value: 0,
+                span: span(),
+            }),
+            span: span(),
+        };
+        assert_eq!(render_expr(&if_expr), "(if true 1 0)");
+
+        let patterns = [
+            Pattern::Wildcard { span: span() },
+            Pattern::Var {
+                name: "v".to_string(),
+                span: span(),
+            },
+            Pattern::Symbol {
+                value: "alice".to_string(),
+                span: span(),
+            },
+            Pattern::Int {
+                value: 3,
+                span: span(),
+            },
+            Pattern::Bool {
+                value: true,
+                span: span(),
+            },
+            Pattern::Ctor {
+                name: "node".to_string(),
+                args: vec![
+                    Pattern::Ctor {
+                        name: "leaf".to_string(),
+                        args: vec![],
+                        span: span(),
+                    },
+                    Pattern::Var {
+                        name: "tail".to_string(),
+                        span: span(),
+                    },
+                ],
+                span: span(),
+            },
+        ];
+        assert_eq!(render_pattern(&patterns[0]), "_");
+        assert_eq!(render_pattern(&patterns[1]), "v");
+        assert_eq!(render_pattern(&patterns[2]), "alice");
+        assert_eq!(render_pattern(&patterns[3]), "3");
+        assert_eq!(render_pattern(&patterns[4]), "true");
+        assert_eq!(render_pattern(&patterns[5]), "(node (leaf) tail)");
+
+        let match_expr = Expr::Match {
+            scrutinee: Box::new(Expr::Var {
+                name: "xs".to_string(),
+                span: span(),
+            }),
+            arms: vec![
+                MatchArm {
+                    pattern: Pattern::Ctor {
+                        name: "leaf".to_string(),
+                        args: vec![],
+                        span: span(),
+                    },
+                    body: Expr::Int {
+                        value: 0,
+                        span: span(),
+                    },
+                    span: span(),
+                },
+                MatchArm {
+                    pattern: Pattern::Ctor {
+                        name: "node".to_string(),
+                        args: vec![Pattern::Var {
+                            name: "n".to_string(),
+                            span: span(),
+                        }],
+                        span: span(),
+                    },
+                    body: Expr::Var {
+                        name: "n".to_string(),
+                        span: span(),
+                    },
+                    span: span(),
+                },
+            ],
+            span: span(),
+        };
+        assert_eq!(render_expr(&match_expr), "(match xs ((leaf) 0) ((node n) n))");
+    }
+
+    #[test]
+    fn render_forms_and_context_blocks_work_for_mixed_content() {
+        let mut forms = ContextForms {
+            imports: vec![ImportDecl {
+                path: "zeta.dtl".to_string(),
+                span: span(),
+            }],
+            sorts: vec![SortDecl {
+                name: "Subject".to_string(),
+                span: span(),
+            }],
+            data_decls: vec![DataDecl {
+                name: "Node".to_string(),
+                constructors: vec![
+                    ConstructorDecl {
+                        name: "leaf".to_string(),
+                        fields: vec![],
+                        span: span(),
+                    },
+                    ConstructorDecl {
+                        name: "cons".to_string(),
+                        fields: vec![Type::Int],
+                        span: span(),
+                    },
+                ],
+                span: span(),
+            }],
+            relations: vec![RelationDecl {
+                name: "allowed".to_string(),
+                arg_sorts: vec!["Subject".to_string()],
+                span: span(),
+            }],
+            facts: vec![Fact {
+                name: "allowed".to_string(),
+                terms: vec![LogicTerm::Symbol("alice".to_string())],
+                span: span(),
+            }],
+            rules: vec![Rule {
+                head: Atom {
+                    pred: "allowed".to_string(),
+                    terms: vec![LogicTerm::Var("x".to_string())],
+                },
+                body: Formula::Atom(Atom {
+                    pred: "allowed".to_string(),
+                    terms: vec![LogicTerm::Var("x".to_string())],
+                }),
+                span: span(),
+            }],
+            asserts: vec![AssertDecl {
+                name: "ok".to_string(),
+                params: vec![Param {
+                    name: "u".to_string(),
+                    ty: Type::Domain("Subject".to_string()),
+                    span: span(),
+                }],
+                formula: Formula::Atom(Atom {
+                    pred: "allowed".to_string(),
+                    terms: vec![LogicTerm::Var("u".to_string())],
+                }),
+                span: span(),
+            }],
+            universes: vec![UniverseDecl {
+                ty_name: "Subject".to_string(),
+                values: vec![LogicTerm::Symbol("alice".to_string())],
+                span: span(),
+            }],
+            defns: vec![Defn {
+                name: "id".to_string(),
+                params: vec![Param {
+                    name: "x".to_string(),
+                    ty: Type::Int,
+                    span: span(),
+                }],
+                ret_type: Type::Int,
+                body: Expr::Var {
+                    name: "x".to_string(),
+                    span: span(),
+                },
+                span: span(),
+            }],
+        };
+        forms.sort_for_render();
+
+        let mut rendered = String::new();
+        render_forms(&forms, &mut rendered);
+        assert!(rendered.contains("(インポート \"zeta.dtl\")"));
+        assert!(rendered.contains("(型 Subject)"));
+        assert!(rendered.contains("(データ Node :コンストラクタ ((leaf) (cons Int)))"));
+        assert!(rendered.contains("(関係 allowed :引数 (Subject))"));
+        assert!(rendered.contains("(事実 allowed :項 (alice))"));
+        assert!(rendered.contains("(規則 :頭 (allowed ?x) :本体 (allowed ?x))"));
+        assert!(rendered.contains("(検証 ok :引数 ((u Subject)) :式 (allowed u))"));
+        assert!(rendered.contains("(宇宙 Subject :値 (alice))"));
+        assert!(rendered.contains("(関数 id"));
+
+        let program = Program {
+            imports: forms.imports.clone(),
+            sorts: forms.sorts.clone(),
+            data_decls: forms.data_decls.clone(),
+            relations: forms.relations.clone(),
+            facts: forms.facts.clone(),
+            rules: forms.rules.clone(),
+            asserts: forms.asserts.clone(),
+            universes: forms.universes.clone(),
+            defns: forms.defns.clone(),
+        };
+        let src = r#"
+            ; @context: pre
+            (import "zeta.dtl")
+            (sort Subject)
+            ; @context: app
+            (relation allowed (Subject))
+            (fact allowed alice)
+            (rule (allowed ?x) (allowed ?x))
+            (assert ok ((u Subject)) (allowed u))
+            (universe Subject (alice))
+            (defn id ((x Int)) Int x)
+            (data Node (leaf) (cons Int))
+        "#;
+        let mut out = String::new();
+        render_with_context_blocks(program, src, &mut out);
+        assert!(out.contains("; @context: pre"));
+        assert!(out.contains("; @context: app"));
+    }
+
+    #[test]
+    fn format_source_supports_no_context_mode_and_parse_errors() {
+        let src = r#"
+            (relation z (Subject))
+            (sort Subject)
+            (data Choice (a) (b))
+        "#;
+        let rendered = format_source(
+            src,
+            FormatOptions {
+                preserve_context: false,
+            },
+        )
+        .expect("format");
+
+        let sort_pos = rendered.find("(型 Subject)").expect("sort");
+        let relation_pos = rendered.find("(関係 z :引数 (Subject))").expect("relation");
+        assert!(sort_pos < relation_pos);
+
+        let err = format_source("(", FormatOptions::default()).expect_err("parse error");
+        assert!(!err.is_empty());
+    }
+}
