@@ -57,10 +57,7 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at 14% -12%, rgba(94, 129, 172, 0.23), transparent 44%),
-    radial-gradient(circle at 84% -8%, rgba(136, 192, 208, 0.16), transparent 42%),
-    linear-gradient(180deg, #2f3b52 0%, #2b364a 52%, #293448 100%);
+  background: #2c3648;
 }
 
 .page-wrapper {
@@ -69,7 +66,7 @@ body {
 
 #mdbook-menu-bar {
   border-block-end-color: rgba(129, 161, 193, 0.32);
-  background: linear-gradient(180deg, rgba(53, 65, 87, 0.9) 0%, rgba(47, 58, 79, 0.88) 100%);
+  background-color: #3a465d;
   backdrop-filter: blur(8px);
   box-shadow: 0 6px 18px rgba(31, 41, 58, 0.2);
 }
@@ -83,7 +80,7 @@ body {
 
 .sidebar {
   border-inline-end: 1px solid rgba(129, 161, 193, 0.3);
-  background: linear-gradient(180deg, #334056 0%, #303c52 100%);
+  background-color: #344158;
 }
 
 .sidebar .sidebar-scrollbox {
@@ -132,8 +129,7 @@ body {
   padding: clamp(20px, 2.4vw, 36px);
   border: 1px solid rgba(129, 161, 193, 0.26);
   border-radius: 18px;
-  background:
-    linear-gradient(165deg, rgba(65, 79, 105, 0.8) 0%, rgba(54, 67, 90, 0.84) 100%);
+  background-color: rgba(60, 74, 99, 0.88);
   box-shadow:
     0 10px 26px rgba(29, 38, 54, 0.2),
     inset 0 1px 0 rgba(236, 239, 244, 0.08);
@@ -213,8 +209,7 @@ pre {
   margin: 1.45em 0;
   border: 1px solid rgba(129, 161, 193, 0.42);
   border-radius: 15px;
-  background:
-    linear-gradient(165deg, rgba(52, 64, 87, 0.96) 0%, rgba(46, 57, 78, 0.98) 100%);
+  background-color: rgba(50, 62, 84, 0.96);
   box-shadow:
     0 8px 18px rgba(29, 39, 55, 0.22),
     inset 0 1px 0 rgba(236, 239, 244, 0.08);
@@ -227,7 +222,7 @@ pre::before {
   width: 100%;
   height: 2px;
   border-radius: 15px 15px 0 0;
-  background: linear-gradient(90deg, #88c0d0 0%, #81a1c1 48%, #5e81ac 100%);
+  background-color: #81a1c1;
   opacity: 0.78;
   pointer-events: none;
 }
