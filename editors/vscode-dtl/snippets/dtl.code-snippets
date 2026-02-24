@@ -1,0 +1,34 @@
+{
+  "DTL sort": {
+    "prefix": "dtl-sort",
+    "body": [
+      "(sort ${1:Subject})"
+    ],
+    "description": "sort declaration"
+  },
+  "DTL relation": {
+    "prefix": "dtl-relation",
+    "body": [
+      "(relation ${1:can-access} (${2:Subject} ${3:Resource} ${4:Action}))"
+    ],
+    "description": "relation declaration"
+  },
+  "DTL defn": {
+    "prefix": "dtl-defn",
+    "body": [
+      "(defn ${1:can-read} ((${2:u} ${3:Subject})) ${4:Bool}",
+      "  ${5:true})"
+    ],
+    "description": "function declaration"
+  },
+  "DTL surface function": {
+    "prefix": "dtl-関数",
+    "body": [
+      "(関数 ${1:契約可否}",
+      "  :引数 ((${2:担当} ${3:主体}))",
+      "  :戻り ${4:Bool}",
+      "  :本体 ${5:true})"
+    ],
+    "description": "surface function declaration"
+  }
+}

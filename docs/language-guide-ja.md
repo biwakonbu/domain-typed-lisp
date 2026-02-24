@@ -20,7 +20,7 @@
 ### 3.1 `sort`: 開集合の型名
 `sort` は「ドメイン軸の型名」です。値の一覧までは固定しません。
 
-```lisp
+```dtl
 (sort 主体)
 (sort 契約)
 ```
@@ -28,7 +28,7 @@
 ### 3.2 `data`: 閉集合の語彙（ADT）
 `data` は constructor 群で値語彙を固定します。
 
-```lisp
+```dtl
 (data 顧客種別 (法人) (個人))
 ```
 
@@ -37,7 +37,7 @@
 ### 3.3 `relation` + `fact` + `rule`: 論理知識
 宣言 (`relation`)・事実 (`fact`)・規則 (`rule`) を定義します。
 
-```lisp
+```dtl
 (relation 契約締結可能 (主体 契約 顧客種別))
 (fact 契約締結可能 山田 基本契約 (法人))
 (rule (契約締結可能 ?担当 ?契約ID ?種別)
@@ -54,7 +54,7 @@
 
 相互再帰は許可されません。戻り値に `Refine` を使うと、契約として証明対象になります。
 
-```lisp
+```dtl
 (defn 契約可否 ((担当 主体) (契約ID 契約) (種別 顧客種別))
   (Refine b Bool (契約締結可能 担当 契約ID 種別))
   (契約締結可能 担当 契約ID 種別))
@@ -66,7 +66,7 @@
 ### 3.6 `universe`: 有限モデル境界
 `prove` は全探索なので、対象型の有限値集合を `universe` で与えます。
 
-```lisp
+```dtl
 (universe 主体 (山田 佐藤))
 (universe 契約 (基本契約 特約))
 (universe 顧客種別 ((法人) (個人)))
@@ -81,7 +81,7 @@
 - auto 判定で Core/Surface を同一ファイルに混在させると `E-SYNTAX-AUTO` になります。
 
 Surface 例:
-```lisp
+```dtl
 ; syntax: surface
 (型 主体)
 (データ 顧客種別 :コンストラクタ ((法人) (個人)))
@@ -130,7 +130,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 
 例（非網羅）:
 
-```lisp
+```dtl
 (defn bad ((u 顧客種別)) Bool
   (match u
     ((法人) true)))

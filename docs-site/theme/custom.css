@@ -1,0 +1,13 @@
+:root {
+  --content-max-width: 1280px;
+}
+
+.content main {
+  max-width: min(var(--content-max-width), 100%);
+}
+
+@media only screen and (max-width: 1080px) {
+  :root {
+    --content-max-width: 100%;
+  }
+}

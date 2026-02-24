@@ -33,14 +33,14 @@
 
 誤り:
 
-```lisp
+```dtl
 (defn f ((x Bool)) Bool
   (if x true false
 ```
 
 修正:
 
-```lisp
+```dtl
 (defn f ((x Bool)) Bool
   (if x true false))
 ```
@@ -76,14 +76,14 @@
 
 誤り:
 
-```lisp
+```dtl
 (relation p (Symbol))
 (rule (p ?x) true)
 ```
 
 修正:
 
-```lisp
+```dtl
 (relation base (Symbol))
 (relation p (Symbol))
 (rule (p ?x) (base ?x))
@@ -112,7 +112,7 @@
 
 誤り:
 
-```lisp
+```dtl
 (data 顧客種別 (法人) (個人))
 (defn 判定 ((k 顧客種別)) Bool true)
 (defn 呼出 ((x Symbol)) Bool (判定 x))
@@ -120,7 +120,7 @@
 
 修正:
 
-```lisp
+```dtl
 (data 顧客種別 (法人) (個人))
 (defn 判定 ((k 顧客種別)) Bool true)
 (defn 呼出 () Bool (判定 (法人)))
@@ -149,7 +149,7 @@
 
 誤り:
 
-```lisp
+```dtl
 (data Nat (z) (s Nat))
 (defn bad ((n Nat)) Bool
   (match n
@@ -159,7 +159,7 @@
 
 修正:
 
-```lisp
+```dtl
 (data Nat (z) (s Nat))
 (defn ok ((n Nat)) Bool
   (match n
@@ -190,7 +190,7 @@
 
 誤り:
 
-```lisp
+```dtl
 (data Subject (alice) (bob))
 (defn is-alice ((u Subject)) Bool
   (match u
@@ -199,7 +199,7 @@
 
 修正:
 
-```lisp
+```dtl
 (data Subject (alice) (bob))
 (defn is-alice ((u Subject)) Bool
   (match u
@@ -230,7 +230,7 @@
 
 誤り:
 
-```lisp
+```dtl
 (sort Subject)
 (relation allowed (Subject))
 (assert everyone ((u Subject)) (allowed u))
@@ -238,7 +238,7 @@
 
 修正:
 
-```lisp
+```dtl
 (sort Subject)
 (relation allowed (Subject))
 (universe Subject (alice bob))

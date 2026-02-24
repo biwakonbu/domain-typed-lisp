@@ -41,6 +41,24 @@ jobs:
       - name: mdbook build
         run: mdbook build docs-site
 
+  syntax-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: install dtl syntax tooling deps
+        run: bun install --cwd tooling/dtl-syntax
+      - name: generate syntax assets
+        run: bun run --cwd tooling/dtl-syntax generate
+      - name: check generated syntax assets
+        run: bun run --cwd tooling/dtl-syntax check-generated
+      - name: syntax generator test
+        run: bun run --cwd tooling/dtl-syntax test
+      - name: install vscode extension deps
+        run: bun install --cwd editors/vscode-dtl
+      - name: package vscode extension
+        run: bun run --cwd editors/vscode-dtl package
+
   cli-check:
     runs-on: ubuntu-latest
     steps:

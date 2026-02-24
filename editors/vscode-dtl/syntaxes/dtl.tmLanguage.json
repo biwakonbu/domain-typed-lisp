@@ -1,0 +1,119 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DTL",
+  "scopeName": "source.dtl",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#logicVar"
+    },
+    {
+      "include": "#surfaceTag"
+    },
+    {
+      "include": "#typeKeyword"
+    },
+    {
+      "include": "#booleanLiteral"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#wildcard"
+    },
+    {
+      "include": "#keyword"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.dtl",
+          "match": ";.*$"
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.dtl",
+          "match": "\"[^\"\\n]*\""
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.dtl",
+          "match": "(?<![^\\s()])[-+]?\\d+(?![^\\s()])"
+        }
+      ]
+    },
+    "logicVar": {
+      "patterns": [
+        {
+          "name": "variable.other.logic.dtl",
+          "match": "(?<![^\\s()])\\?[^\\s()\";]+(?![^\\s()])"
+        }
+      ]
+    },
+    "surfaceTag": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.tag.dtl",
+          "match": "(?<![^\\s()])(?::コンストラクタ|:constructors|:ctors|:引数|:args|:項|:terms|:頭|:head|:本体|:body|:params|:式|:formula|:値|:values|:戻り|:ret)(?![^\\s()])"
+        }
+      ]
+    },
+    "typeKeyword": {
+      "patterns": [
+        {
+          "name": "storage.type.dtl",
+          "match": "(?<![^\\s()])(?:Bool|Int|Symbol|Refine|Adt)(?![^\\s()])"
+        }
+      ]
+    },
+    "booleanLiteral": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.dtl",
+          "match": "(?<![^\\s()])(?:true|false)(?![^\\s()])"
+        }
+      ]
+    },
+    "operator": {
+      "patterns": [
+        {
+          "name": "keyword.operator.function-type.dtl",
+          "match": "(?<![^\\s()])->(?![^\\s()])"
+        }
+      ]
+    },
+    "wildcard": {
+      "patterns": [
+        {
+          "name": "constant.language.wildcard.dtl",
+          "match": "(?<![^\\s()])_(?![^\\s()])"
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.dtl",
+          "match": "(?<![^\\s()])(?:import|sort|data|relation|fact|rule|assert|universe|defn|インポート|型|データ|関係|事実|規則|検証|宇宙|関数|and|not|let|if|match)(?![^\\s()])"
+        }
+      ]
+    }
+  }
+}

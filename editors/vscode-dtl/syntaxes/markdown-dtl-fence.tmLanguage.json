@@ -1,0 +1,57 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "markdown.dtl-fence.injection",
+  "injectionSelector": "L:text.html.markdown",
+  "patterns": [
+    {
+      "include": "#dtlFence"
+    },
+    {
+      "include": "#lispFence"
+    }
+  ],
+  "repository": {
+    "dtlFence": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*dtl(?:\\s+.*)?$",
+      "beginCaptures": {
+        "3": {
+          "name": "punctuation.definition.fenced.markdown"
+        }
+      },
+      "end": "(^|\\G)(\\s*)(\\3)\\s*$",
+      "endCaptures": {
+        "3": {
+          "name": "punctuation.definition.fenced.markdown"
+        }
+      },
+      "name": "markup.fenced_code.block.dtl.markdown",
+      "contentName": "meta.embedded.block.dtl",
+      "patterns": [
+        {
+          "include": "source.dtl"
+        }
+      ]
+    },
+    "lispFence": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*lisp(?:\\s+.*)?$",
+      "beginCaptures": {
+        "3": {
+          "name": "punctuation.definition.fenced.markdown"
+        }
+      },
+      "end": "(^|\\G)(\\s*)(\\3)\\s*$",
+      "endCaptures": {
+        "3": {
+          "name": "punctuation.definition.fenced.markdown"
+        }
+      },
+      "name": "markup.fenced_code.block.dtl-lisp.markdown",
+      "contentName": "meta.embedded.block.dtl",
+      "patterns": [
+        {
+          "include": "source.dtl"
+        }
+      ]
+    }
+  }
+}

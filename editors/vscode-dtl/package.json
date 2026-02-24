@@ -1,0 +1,70 @@
+{
+  "name": "dtl",
+  "displayName": "DTL Syntax",
+  "description": "Syntax highlighting for domain-typed-lisp (.dtl)",
+  "version": "0.1.0",
+  "publisher": "biwakonbu",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/biwakonbu/domain-typed-lisp.git"
+  },
+  "files": [
+    "language-configuration.json",
+    "syntaxes/**",
+    "snippets/**",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "package": "bunx @vscode/vsce package --no-dependencies",
+    "package:out": "bunx @vscode/vsce package --no-dependencies --out dtl.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.2"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "dtl",
+        "aliases": [
+          "DTL",
+          "dtl"
+        ],
+        "extensions": [
+          ".dtl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dtl",
+        "scopeName": "source.dtl",
+        "path": "./syntaxes/dtl.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.dtl-fence.injection",
+        "path": "./syntaxes/markdown-dtl-fence.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.dtl": "dtl"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "dtl",
+        "path": "./snippets/dtl.code-snippets"
+      }
+    ]
+  }
+}

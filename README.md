@@ -69,6 +69,30 @@ cargo install mdbook --locked
 - 生成物: `docs-site/book/index.html`
 - GitHub Pages 運用: `.github/workflows/docs-site.yml`
 
+## シンタックスハイライト生成 / VSCode・Cursor 拡張
+```bash
+# 生成器の依存をインストール
+bun install --cwd tooling/dtl-syntax
+
+# TextMate grammar / mdBook highlight.js を生成
+bun run --cwd tooling/dtl-syntax generate
+
+# 生成物の差分チェック（CI 用）
+bun run --cwd tooling/dtl-syntax check-generated
+
+# 生成器テスト
+bun run --cwd tooling/dtl-syntax test
+
+# 拡張をパッケージ化（.vsix）
+bun install --cwd editors/vscode-dtl
+bun run --cwd editors/vscode-dtl package
+```
+
+- 共通構文定義: `tooling/dtl-syntax/src/syntax-spec.ts`
+- TextMate 生成物: `editors/vscode-dtl/syntaxes/dtl.tmLanguage.json`
+- mdBook 用ハイライト: `docs-site/theme/dtl-highlight.js`
+- 拡張定義: `editors/vscode-dtl/package.json`
+
 ## CLI
 
 ### `check`
@@ -113,6 +137,9 @@ dtl fmt <FILE>... [--check] [--stdout]
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --lib --bins --tests
+bun run --cwd tooling/dtl-syntax check-generated
+bun run --cwd tooling/dtl-syntax test
+bun run --cwd editors/vscode-dtl package
 mdbook build docs-site
 cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot
 cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot

@@ -88,33 +88,33 @@ dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
 
 ### 3.1 ドメイン定数を ADT constructor に置換
 - 旧:
-```lisp
+```dtl
 (sort Action)
 (relation can-access (Subject Resource Action))
 (rule (can-access ?u ?r read) ...)
 ```
 - 新:
-```lisp
+```dtl
 (data Action (read))
 (relation can-access (Subject Resource Action))
 (rule (can-access ?u ?r (read)) ...)
 ```
 
 ### 3.2 証明対象に universe を追加
-```lisp
+```dtl
 (data Subject (alice) (bob))
 (universe Subject ((alice) (bob)))
 ```
 
 ### 3.3 グローバル制約を assert へ移行
-```lisp
+```dtl
 (assert consistency ((u Subject))
   (not (and (allowed u) (not (allowed u)))))
 ```
 
 ### 3.4 関数再帰を構造再帰へ修正
 非許可（非減少）:
-```lisp
+```dtl
 (data Nat (z) (s Nat))
 (defn bad ((n Nat)) Bool
   (match n
@@ -123,7 +123,7 @@ dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
 ```
 
 許可（tail + strict subterm 減少）:
-```lisp
+```dtl
 (data Nat (z) (s Nat))
 (defn ok ((n Nat)) Bool
   (match n
@@ -134,7 +134,7 @@ dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup
 ### 3.5 Surface 形式へ移行（任意）
 Core のままでも互換ですが、可読性向上のため Surface へ統一可能です。
 
-```lisp
+```dtl
 ; syntax: surface
 (型 主体)
 (データ 顧客種別 :コンストラクタ ((法人) (個人)))

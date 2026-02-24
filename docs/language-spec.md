@@ -50,60 +50,60 @@
 ## 3. トップレベルフォーム
 
 ### 3.1 import
-```lisp
+```dtl
 (import "relative/path.dtl")
 ```
 
 ### 3.2 sort
-```lisp
+```dtl
 (sort Subject)
 ```
 
 ### 3.3 data（単相・再帰許可）
-```lisp
+```dtl
 (data Action
   (read)
   (write))
 ```
 
 ### 3.4 relation
-```lisp
+```dtl
 (relation can-access (Subject Resource Action))
 ```
 
 ### 3.5 fact
-```lisp
+```dtl
 (fact can-access alice doc1 (read))
 ```
 
 ### 3.6 rule
-```lisp
+```dtl
 (rule (can-access ?u ?r (read))
       (and (has-role ?u admin)
            (resource-public ?r)))
 ```
 
 ### 3.7 assert
-```lisp
+```dtl
 (assert policy-consistency ((u Subject))
   (not (and (allowed u)
             (not (allowed u)))))
 ```
 
 ### 3.8 universe（有限モデル境界）
-```lisp
+```dtl
 (universe Subject ((alice) (bob)))
 ```
 
 ### 3.9 defn
-```lisp
+```dtl
 (defn can-read ((u Subject) (r Resource))
   (Refine b Bool (can-access u r (read)))
   (can-access u r (read)))
 ```
 
 ### 3.10 Surface（タグ付き）例
-```lisp
+```dtl
 ; syntax: surface
 (型 主体)
 (データ 顧客種別 :コンストラクタ ((法人) (個人)))
