@@ -525,8 +525,18 @@
     return best;
   }
 
+  function resolvePathToRoot() {
+    if (typeof path_to_root === "string") {
+      return path_to_root;
+    }
+    if (typeof window.path_to_root === "string") {
+      return window.path_to_root;
+    }
+    return "";
+  }
+
   function buildGlossaryHref(termId) {
-    const root = typeof window.path_to_root === "string" ? window.path_to_root : "";
+    const root = resolvePathToRoot();
     return `${root}reference/glossary.html#term-${termId}`;
   }
 
