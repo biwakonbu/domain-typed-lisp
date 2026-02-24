@@ -3,6 +3,7 @@
 - [トップ](./index.md)
 - [チュートリアル](./tutorial/index.md)
   - [クイックスタート](./tutorial/quickstart.md)
+  - [利用例カタログ](./tutorial/examples-catalog.md)
   - [最初のポリシーを作る](./tutorial/first-policy.md)
   - [semantic-dup 実践](./tutorial/semantic-dup.md)
   - [複数ファイル運用（import/@context）](./tutorial/multi-file.md)

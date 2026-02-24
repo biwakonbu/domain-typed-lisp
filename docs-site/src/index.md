@@ -9,9 +9,10 @@
 ## 最短導線
 
 1. [クイックスタート](./tutorial/quickstart.md) で `check -> prove -> doc -> lint -> fmt` を通す
-2. [CLI リファレンス](./reference/cli.md) でオプション契約を確認する
-3. [JSON 契約リファレンス](./reference/json-contracts.md) で CI 連携形式を固定する
-4. 詳細仕様が必要になった時点で [言語仕様（完全版）](./reference/language-spec.md) を参照する
+2. [利用例カタログ](./tutorial/examples-catalog.md) から用途に合うサンプルを選ぶ
+3. [CLI リファレンス](./reference/cli.md) でオプション契約を確認する
+4. [JSON 契約リファレンス](./reference/json-contracts.md) で CI 連携形式を固定する
+5. 詳細仕様が必要になった時点で [言語仕様（完全版）](./reference/language-spec.md) を参照する
 
 ## 想定読者
 

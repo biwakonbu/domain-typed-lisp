@@ -116,7 +116,9 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 ```
 
 ## ドキュメント
+- [公開ドキュメントサイト](https://biwakonbu.github.io/domain-typed-lisp/)
 - [ドキュメントサイト目次（mdBook）](docs-site/src/SUMMARY.md)
+- [利用例カタログ](docs-site/src/tutorial/examples-catalog.md)
 - [言語仕様 v0.4](docs/language-spec.md)
 - [言語解説ガイド v0.4](docs/language-guide-ja.md)
 - [エラーコード別トラブルシュート v0.4](docs/troubleshooting-errors-ja.md)
