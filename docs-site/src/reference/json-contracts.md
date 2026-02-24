@@ -21,13 +21,13 @@ CI や外部連携では、以下のトップレベル構造を前提に固定�
 成功:
 
 ```json
-{"status":"ok","proof":{"obligations":[{"id":"assert::...","result":"proved"}]}}
+{"status":"ok","proof":{"schema_version":"2.0.0","profile":"standard","summary":{"total":1,"proved":1,"failed":0},"obligations":[{"id":"assert::...","result":"proved"}]}}
 ```
 
 失敗:
 
 ```json
-{"status":"error","proof":{"obligations":[{"result":"failed"}]}}
+{"status":"error","proof":{"schema_version":"2.0.0","profile":"standard","summary":{"total":1,"proved":0,"failed":1},"obligations":[{"result":"failed"}]}}
 ```
 
 ## lint
@@ -55,7 +55,27 @@ CI や外部連携では、以下のトップレベル構造を前提に固定�
 - `proof-trace.json`
 - `doc-index.json`
 
+`spec.json`（v2）必須フィールド:
+- `schema_version: "2.0.0"`
+- `profile: "standard" | "selfdoc"`
+- `summary: {total, proved, failed}`
+- `self_description: {project, modules, references, contracts, quality_gates}`
+
+`doc-index.json`（v2）必須フィールド:
+- `schema_version: "2.0.0"`
+- `profile`
+- `intermediate.dsl`（通常 `null`、`selfdoc` では `"selfdoc.generated.dtl"`）
+
+## selfdoc
+
+`dtl selfdoc --out DIR` は次を生成します。
+- `selfdoc.generated.dtl`
+- `proof-trace.json`
+- `doc-index.json`
+- `spec.md` または `spec.json`
+
 契約の実測例はテストを参照してください。
 - `tests/e2e_examples.rs`
 - `tests/integration_prove_json_contract.rs`
 - `tests/integration_lint_fmt_doc_pdf_cli.rs`
+- `tests/integration_selfdoc_cli.rs`

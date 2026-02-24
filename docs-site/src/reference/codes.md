@@ -16,5 +16,7 @@
 - `E-TOTAL`: 全域性違反
 - `E-MATCH`: `match` 検査違反
 - `E-PROVE`: 証明失敗 / universe 不備
+- `E-FMT-SELFDOC-UNSUPPORTED`: selfdoc form に対する fmt 非対応
+- `E-SELFDOC-*`: selfdoc 設定/走査/分類/参照/契約/quality gate 抽出エラー
 
 詳細と対処は [トラブルシュート（完全版）](./troubleshooting.md) を参照してください。

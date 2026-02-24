@@ -1,9 +1,9 @@
-# 言語解説ガイド（v0.4）
+# 言語解説ガイド（v0.5）
 
 この文書は、`docs/language-spec.md` の仕様項目を「なぜその設計か」「実際にどう書くか」「どこで失敗するか」の観点で補足する実践向けガイドです。
 
 ## 1. 対象バージョン
-- DSL 仕様: v0.4（`docs/language-spec.md` 準拠）
+- DSL 仕様: v0.5（`docs/language-spec.md` 準拠）
 - 実装: `dtl` 本体（Rust, `rust-toolchain.toml` は `1.93.0`）
 
 ## 2. この DSL が解く問題
@@ -97,9 +97,10 @@ Surface 例:
 ただし quoted Atom（`"..."`）は NFC 正規化されません。`import` の `"path"` は quoted Atom として扱われます（ファイルパス互換のため）。
 
 ### 4.4 quoted Atom の境界
-- quoted Atom は**文字列リテラルではありません**。`\\n` / `\\t` / `\\\"` などのエスケープは解釈されません。
-- バックスラッシュはそのまま保持されます。
-- v0.4 の lexer は空白・`(`・`)`・`;` でトークン分割するため、quoted Atom 内の空白や `;` を含む記述は扱えません。
+- quoted Atom は v0.5 で文字列リテラルとして扱われます。
+- 対応エスケープ: `\\\\` / `\\\"` / `\\n` / `\\t` / `\\r`
+- 未対応エスケープは `E-PARSE` で失敗します。
+- quoted Atom 内の空白・`;`・括弧は 1 トークンとして保持されます。
 
 ### 4.5 `Symbol` と `Domain` / `Adt` は別物
 `Symbol` を `Domain`/`Adt` 引数に暗黙で渡せません。明示的に型を合わせます。
@@ -121,7 +122,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 - 軸だけ定義したい: `sort` を使う
 - 概念を変換したい: 型を分けて `defn` で変換
 
-同義語 alias で吸収する設計は、v0.4 でも採用していません。
+同義語 alias で吸収する設計は、v0.5 でも採用していません。
 
 ## 6. `match` の重要挙動
 - `Bool` と `Adt` については網羅性チェックされます。
@@ -178,6 +179,15 @@ cargo run -- fmt examples/customer_contract_ja.dtl
 - 既定は in-place 更新
 - `--check` は差分検出のみ
 - `--stdout` は単一ファイル入力時のみ
+- selfdoc form（`project/module/reference/contract/quality-gate`）を含む入力は `E-FMT-SELFDOC-UNSUPPORTED` で失敗
+
+### 7.6 `selfdoc`
+```bash
+cargo run -- selfdoc --repo . --out out_selfdoc --format json
+```
+- `.dtl-selfdoc.toml` を読み取り、リポジトリを走査して `selfdoc.generated.dtl` を生成します。
+- その後、生成 DSL に対して `prove/doc` を実行し、`spec.json` / `proof-trace.json` / `doc-index.json` を出力します。
+- 設定ファイルが無い場合はテンプレートを stderr 出力し、`exit code 2` で終了します。
 
 ## 8. チュートリアル: `check -> prove -> doc` 一気通貫
 
@@ -246,9 +256,13 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - バンドルの入口です。
 - `files` に含まれるファイルが「その run の正」です。
 - `status` は現状 `ok` 固定です。
+- v0.5 では `schema_version=2.0.0`, `profile`, `intermediate.dsl` を持ちます。
+- `intermediate.dsl` は通常 `null`、`selfdoc` 実行時は `selfdoc.generated.dtl` です。
 
 ### 9.2 `proof-trace.json`
 - `schema_version`: トレース契約バージョン
+- `profile`: `standard` または `selfdoc`
+- `summary`: `total/proved/failed` の要約
 - `obligations[].id`: `defn::...` または `assert::...`
 - `obligations[].result`: `proved` / `failed`
 - `counterexample`: 失敗時のみ出現（`valuation`, `premises`, `missing_goals`）

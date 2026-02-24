@@ -105,6 +105,21 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
         "E-DATA" => Some("data 宣言の重複・再帰・constructor の整合性を確認してください。"),
         "E-MATCH" => Some("match の網羅性・到達不能分岐・パターン型整合性を確認してください。"),
         "E-PROVE" => Some("universe と証明義務を確認し、反例トレースを参照して修正してください。"),
+        "E-FMT-SELFDOC-UNSUPPORTED" => {
+            Some("selfdoc フォームは fmt 非対応です。selfdoc 生成物を直接整形しないでください。")
+        }
+        "E-SELFDOC-CONFIG" => Some("`.dtl-selfdoc.toml` の構文と必須項目を確認してください。"),
+        "E-SELFDOC-SCAN" => {
+            Some("scan.include/exclude と .gitignore の組み合わせを確認してください。")
+        }
+        "E-SELFDOC-CLASSIFY" => {
+            Some("各ファイルが classify ルールにちょうど1つ一致するように調整してください。")
+        }
+        "E-SELFDOC-REF" => Some("抽出したローカル参照先パスが存在するか確認してください。"),
+        "E-SELFDOC-CONTRACT" => {
+            Some("README.md または language-spec に `dtl <subcommand>` を記述してください。")
+        }
+        "E-SELFDOC-GATE" => Some("workflow YAML の jobs/steps/run 記述を確認してください。"),
         _ => None,
     }
 }

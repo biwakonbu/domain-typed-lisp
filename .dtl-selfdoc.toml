@@ -1,0 +1,59 @@
+version = 1
+
+[scan]
+include = [
+  "src/**",
+  "tests/**",
+  "benches/**",
+  "docs/**",
+  "docs-site/**",
+  "examples/**",
+  "scripts/**",
+  "tooling/**",
+  "editors/**",
+  ".github/workflows/**",
+  "README.md",
+  "TODO.md",
+  "LICENSE",
+  "Cargo.toml",
+  "Cargo.lock",
+  "rust-toolchain.toml",
+  ".gitignore",
+  ".dtl-selfdoc.toml"
+]
+exclude = [
+  "target/**"
+]
+use_gitignore = true
+
+[[classify]]
+category = "source"
+patterns = ["src/**"]
+
+[[classify]]
+category = "test"
+patterns = ["tests/**", "benches/**"]
+
+[[classify]]
+category = "doc"
+patterns = ["docs/**", "docs-site/**", "README.md", "TODO.md", "LICENSE"]
+
+[[classify]]
+category = "ci"
+patterns = [".github/workflows/**"]
+
+[[classify]]
+category = "script"
+patterns = ["scripts/**"]
+
+[[classify]]
+category = "tooling"
+patterns = ["tooling/**", "editors/**"]
+
+[[classify]]
+category = "example"
+patterns = ["examples/**"]
+
+[[classify]]
+category = "config"
+patterns = ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".gitignore", ".dtl-selfdoc.toml"]

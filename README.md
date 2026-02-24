@@ -14,7 +14,8 @@
   - `@context` ブロックを保持し、複数コンテキストでも idempotent 整形
 - 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
 - ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力（`--pdf` 対応）
-- 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は非正規化・エスケープ非解釈）
+- `selfdoc`: リポジトリを自動抽出し、自己記述 DSL (`selfdoc.generated.dtl`) を生成して `doc` 束を出力
+- 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は空白対応 + エスケープ解釈）
 - `syntax: auto` は Core/Surface 混在を検知すると `E-SYNTAX-AUTO` を返す
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
 
@@ -28,6 +29,7 @@ cargo run -- prove examples/customer_contract_ja.dtl --format json --out out
 cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown
 cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown --pdf
 cargo run -- doc examples/customer_contract_ja.dtl --out out_json --format json
+cargo run -- selfdoc --repo . --out out_selfdoc --format json
 
 # 日本語ドメイン型サンプル
 cargo run -- check examples/customer_contract_ja.dtl
@@ -129,6 +131,16 @@ dtl doc <FILE>... --out DIR [--format markdown|json]
   - `--format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
   - `--pdf`: markdown 出力後に `spec.pdf` 生成を試行（失敗は warning）
   - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
+  - `proof-trace.json` / `spec.json` / `doc-index.json` の `schema_version` は `2.0.0`
+
+### `selfdoc`
+```bash
+dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]
+```
+- `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を一気通貫で実行する。
+- `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
+- 設定ファイル未配置時はテンプレートを stderr に出力し `exit code 2` で終了する。
+- 出力は `selfdoc.generated.dtl` / `proof-trace.json` / `doc-index.json` / `spec.md|spec.json`。
 
 ### `lint`
 ```bash
@@ -163,9 +175,9 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 - [公開ドキュメントサイト](https://biwakonbu.github.io/domain-typed-lisp/)
 - [ドキュメントサイト目次（mdBook）](docs-site/src/SUMMARY.md)
 - [利用例カタログ](docs-site/src/tutorial/examples-catalog.md)
-- [言語仕様 v0.4](docs/language-spec.md)
-- [言語解説ガイド v0.4](docs/language-guide-ja.md)
-- [エラーコード別トラブルシュート v0.4](docs/troubleshooting-errors-ja.md)
+- [言語仕様 v0.5](docs/language-spec.md)
+- [言語解説ガイド v0.5](docs/language-guide-ja.md)
+- [エラーコード別トラブルシュート v0.5](docs/troubleshooting-errors-ja.md)
 - [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
 - [v0.2 移行ガイド（v0.4 追補）](docs/migration-v0.2.md)
 - [検証計画](docs/verification-plan.md)

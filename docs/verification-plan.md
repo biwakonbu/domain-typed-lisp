@@ -1,12 +1,15 @@
-# 検証計画（v0.4）
+# 検証計画（v0.5）
 
 ## テスト戦略
 - unit
   - parser: `core/surface`、`data/assert/universe/match/constructor項`
+  - parser: selfdoc Surface（`project/module/reference/contract/quality-gate`）デシュガ
+  - parser: quoted Atom escape（`\\`/`\"`/`\n`/`\t`/`\r`）境界
   - resolve: constructor 解決、再帰 ADT 許容、universe 整合
   - typecheck: 構造再帰判定（tail + strict subterm）/ 相互再帰拒否 (`E-TOTAL`)、`match` 網羅/到達不能 (`E-MATCH`)
   - lint: `L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH` / `L-UNUSED-DECL`
   - fmt: in-place / `--check` / `--stdout` 契約
+  - fmt: selfdoc form 入力の `E-FMT-SELFDOC-UNSUPPORTED` 契約
   - logic_engine: ADT 構造値の導出と一致判定
   - prover: 有限モデル全探索、反例最小化、証跡生成
 - integration
@@ -21,6 +24,8 @@
   - `syntax:auto` 混在衝突の専用診断契約（`E-SYNTAX-AUTO`）
   - `prove` の JSON 契約ゴールデン固定（stdout/`proof-trace.json` 一致）
   - `doc --format markdown|json` の成果物切替契約
+  - `selfdoc` の終了コード・設定欠如 (`exit=2`)・成果物契約
+  - `selfdoc` の fail-fast 参照検証契約（`E-SELFDOC-REF`）
 - property
   - 固定点の冪等性・単調性
   - 証明結果の順序不変性
@@ -42,9 +47,10 @@
 14. `dtl check examples/complex_policy_import_entry.dtl --format json`
 15. `dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex`
 16. `dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup`
-17. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
-18. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
-19. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
+17. `dtl selfdoc --repo . --out out_selfdoc --format json`
+18. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
+19. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
+20. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
 1. 仕様更新（language-spec / migration）
@@ -61,4 +67,5 @@
   - `cli-lint-fmt`: `integration_lint_fmt_doc_pdf_cli`
   - `cli-prove`: `integration_prove_doc_cli`（prove系）+ `integration_prove_json_contract`
   - `cli-doc`: `integration_prove_doc_cli`（doc系）
+  - `cli-selfdoc`: `integration_selfdoc_cli`
   - `bench`: `perf_scaling` の代表ケースをスモーク実行

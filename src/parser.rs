@@ -205,6 +205,14 @@ fn syntax_marker(form: &SExpr) -> Option<SyntaxMarker> {
                 end,
             })
         }
+        "プロジェクト" | "モジュール" | "参照" | "契約" | "品質ゲート" => {
+            Some(SyntaxMarker {
+                signal: SyntaxSignal::Surface,
+                reason: "自己記述 Surface ヘッド",
+                start,
+                end,
+            })
+        }
         "import" | "インポート" | "sort" => None,
         "data" => syntax_marker_from_tag_position(
             list,
@@ -262,6 +270,16 @@ fn syntax_marker(form: &SExpr) -> Option<SyntaxMarker> {
             start,
             end,
         ),
+        "project" | "module" | "reference" | "contract" | "quality-gate" => {
+            syntax_marker_from_tag_position(
+                list,
+                1,
+                "core selfdoc 形式",
+                "surface selfdoc タグ形式",
+                start,
+                end,
+            )
+        }
         _ => None,
     }
 }
@@ -324,10 +342,28 @@ fn looks_like_surface(src: &str) -> bool {
         "(検証",
         "(宇宙",
         "(関数",
+        "(プロジェクト :",
+        "(モジュール :",
+        "(参照 :",
+        "(契約 :",
+        "(品質ゲート :",
+        "(project :",
+        "(module :",
+        "(reference :",
+        "(contract :",
+        "(quality-gate :",
         ":引数",
         ":戻り",
         ":本体",
         ":コンストラクタ",
+        ":名前",
+        ":概要",
+        ":パス",
+        ":元",
+        ":先",
+        ":コマンド",
+        ":出典",
+        ":必須",
     ];
     MARKERS.iter().any(|m| src.contains(m))
 }
@@ -445,6 +481,7 @@ fn attach_pattern_source(pattern: &mut Pattern, source: &str) {
 fn lex(src: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
     let mut tokens = Vec::new();
     let mut it = src.char_indices().peekable();
+    let mut errors = Vec::new();
 
     while let Some((idx, ch)) = it.next() {
         if ch.is_whitespace() {
@@ -470,6 +507,19 @@ fn lex(src: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
             });
             continue;
         }
+        if ch == '"' {
+            match consume_quoted_atom(src, idx, &mut it) {
+                Ok((quoted, end)) => {
+                    tokens.push(Token {
+                        kind: TokenKind::Atom(quoted),
+                        start: idx,
+                        end,
+                    });
+                }
+                Err(err) => errors.push(err),
+            }
+            continue;
+        }
 
         let (start, end) = consume_atom(idx, ch, &mut it);
         let text = &src[start..end];
@@ -480,7 +530,11 @@ fn lex(src: &str) -> Result<Vec<Token>, Vec<Diagnostic>> {
         });
     }
 
-    Ok(tokens)
+    if errors.is_empty() {
+        Ok(tokens)
+    } else {
+        Err(errors)
+    }
 }
 
 fn skip_comment(it: &mut Peekable<CharIndices<'_>>) {
@@ -502,6 +556,53 @@ fn consume_atom(start: usize, first: char, it: &mut Peekable<CharIndices<'_>>) -
         end = idx + ch.len_utf8();
     }
     (start, end)
+}
+
+fn consume_quoted_atom(
+    src: &str,
+    start: usize,
+    it: &mut Peekable<CharIndices<'_>>,
+) -> Result<(String, usize), Diagnostic> {
+    let mut body = String::new();
+
+    while let Some((idx, ch)) = it.next() {
+        let end = idx + ch.len_utf8();
+        if ch == '"' {
+            return Ok((format!("\"{body}\""), end));
+        }
+        if ch == '\\' {
+            let Some((esc_idx, esc)) = it.next() else {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "unterminated escape sequence in quoted atom",
+                    Some(make_span(src, idx, end)),
+                ));
+            };
+            let esc_end = esc_idx + esc.len_utf8();
+            match esc {
+                '\\' => body.push('\\'),
+                '"' => body.push('"'),
+                'n' => body.push('\n'),
+                't' => body.push('\t'),
+                'r' => body.push('\r'),
+                _ => {
+                    return Err(Diagnostic::new(
+                        "E-PARSE",
+                        format!("unsupported escape sequence: \\{esc}"),
+                        Some(make_span(src, idx, esc_end)),
+                    ));
+                }
+            }
+            continue;
+        }
+        body.push(ch);
+    }
+
+    Err(Diagnostic::new(
+        "E-PARSE",
+        "unterminated quoted atom",
+        Some(make_span(src, start, src.len())),
+    ))
 }
 
 fn normalize_atom(text: &str) -> String {
@@ -853,6 +954,224 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 sexpr_to_string(body)
             ))
         }
+        "project" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "project expects tags :名前/:概要",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "project expects tags :名前/:概要",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let name = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":名前", ":name"],
+                "project requires :名前",
+            )?;
+            let summary = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":概要", ":summary"],
+                "project requires :概要",
+            )?;
+            Ok(format!(
+                "(fact sd-project {} {})",
+                sexpr_to_string(name),
+                sexpr_to_string(summary)
+            ))
+        }
+        "module" => {
+            if list.len() < 4 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "module expects tags :名前/:パス/:カテゴリ",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "module expects tags :名前/:パス/:カテゴリ",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let name = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":名前", ":name"],
+                "module requires :名前",
+            )?;
+            let path = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":パス", ":path"],
+                "module requires :パス",
+            )?;
+            let category = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":カテゴリ", ":category"],
+                "module requires :カテゴリ",
+            )?;
+            Ok(format!(
+                "(fact exists {})\n(fact artifact {} {})\n(fact sd-module {} {} {})",
+                sexpr_to_string(path),
+                sexpr_to_string(path),
+                sexpr_to_string(category),
+                sexpr_to_string(name),
+                sexpr_to_string(path),
+                sexpr_to_string(category)
+            ))
+        }
+        "reference" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "reference expects tags :元/:先",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "reference expects tags :元/:先",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let from = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":元", ":from"],
+                "reference requires :元",
+            )?;
+            let to =
+                required_tag_value(src, form, &tags, &[":先", ":to"], "reference requires :先")?;
+            Ok(format!(
+                "(fact ref {} {})\n(fact sd-reference {} {})",
+                sexpr_to_string(from),
+                sexpr_to_string(to),
+                sexpr_to_string(from),
+                sexpr_to_string(to)
+            ))
+        }
+        "contract" => {
+            if list.len() < 4 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "contract expects tags :名前/:出典/:パス",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "contract expects tags :名前/:出典/:パス",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let name = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":名前", ":name"],
+                "contract requires :名前",
+            )?;
+            let source = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":出典", ":source"],
+                "contract requires :出典",
+            )?;
+            let path = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":パス", ":path"],
+                "contract requires :パス",
+            )?;
+            Ok(format!(
+                "(fact contract-doc {} {})\n(fact contract-impl {} {})\n(fact sd-contract {} {} {})",
+                sexpr_to_string(name),
+                sexpr_to_string(source),
+                sexpr_to_string(name),
+                sexpr_to_string(path),
+                sexpr_to_string(name),
+                sexpr_to_string(source),
+                sexpr_to_string(path)
+            ))
+        }
+        "quality-gate" => {
+            if list.len() < 4 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "quality-gate expects tags :名前/:コマンド/:出典",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "quality-gate expects tags :名前/:コマンド/:出典",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let name = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":名前", ":name"],
+                "quality-gate requires :名前",
+            )?;
+            let command = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":コマンド", ":command"],
+                "quality-gate requires :コマンド",
+            )?;
+            let source = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":出典", ":source"],
+                "quality-gate requires :出典",
+            )?;
+            let required = match optional_tag_value(&tags, &[":必須", ":required"]) {
+                Some("true") | Some("yes") => "yes",
+                Some("false") | Some("no") => "no",
+                Some(_) | None => "yes",
+            };
+            Ok(format!(
+                "(fact gate-source {} {})\n(fact gate-required {} {})\n(fact sd-quality-gate {} {} {} {})",
+                sexpr_to_string(name),
+                sexpr_to_string(source),
+                sexpr_to_string(name),
+                required,
+                sexpr_to_string(name),
+                sexpr_to_string(command),
+                sexpr_to_string(source),
+                required
+            ))
+        }
         _ => Err(Diagnostic::new(
             "E-PARSE",
             format!("unknown top-level form: {head}"),
@@ -872,6 +1191,11 @@ fn canonical_surface_head(head: &str) -> Option<&'static str> {
         "assert" | "検証" => Some("assert"),
         "universe" | "宇宙" => Some("universe"),
         "defn" | "関数" => Some("defn"),
+        "project" | "プロジェクト" => Some("project"),
+        "module" | "モジュール" => Some("module"),
+        "reference" | "参照" => Some("reference"),
+        "contract" | "契約" => Some("contract"),
+        "quality-gate" | "品質ゲート" => Some("quality-gate"),
         _ => None,
     }
 }
@@ -937,6 +1261,15 @@ fn required_tag_value<'a>(
         message,
         Some(make_span(src, s, e)),
     ))
+}
+
+fn optional_tag_value<'a>(tags: &[(String, &'a SExpr)], candidates: &[&str]) -> Option<&'a str> {
+    for candidate in candidates {
+        if let Some((_, value)) = tags.iter().find(|(key, _)| key == candidate) {
+            return value.as_atom();
+        }
+    }
+    None
 }
 
 fn as_list_items<'a>(

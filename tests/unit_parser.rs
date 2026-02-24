@@ -100,19 +100,27 @@ fn parser_keeps_quoted_atom_without_nfc_normalization() {
 }
 
 #[test]
-fn parser_keeps_escape_sequences_literal_in_import_path() {
+fn parser_unescapes_quoted_atom_in_import_path() {
     let src = r#"(import "a\"b\nc\t.dtl")"#;
     let program = parse_program(src).expect("parse should succeed");
-    assert_eq!(program.imports[0].path, r#"a\"b\nc\t.dtl"#);
+    assert_eq!(program.imports[0].path, "a\"b\nc\t.dtl");
 }
 
 #[test]
-fn parser_rejects_whitespace_inside_quoted_atom() {
+fn parser_accepts_whitespace_inside_quoted_atom() {
     let src = r#"(sort "A B")"#;
+    let program = parse_program(src).expect("parse should succeed");
+    assert_eq!(program.sorts[0].name, "\"A B\"");
+}
+
+#[test]
+fn parser_rejects_unknown_escape_sequence_in_quoted_atom() {
+    let src = r#"(import "bad\q.dtl")"#;
     let errors = parse_program(src).expect_err("parse should fail");
+    assert!(errors.iter().any(|d| d.code == "E-PARSE"));
     assert!(
         errors
             .iter()
-            .any(|d| d.message.contains("sort expects exactly 1 argument"))
+            .any(|d| d.message.contains("unsupported escape sequence"))
     );
 }

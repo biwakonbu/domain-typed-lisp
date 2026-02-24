@@ -504,3 +504,25 @@ fn cli_doc_pdf_gracefully_degrades_without_pandoc() {
     assert_eq!(index["pdf"]["requested"], Value::Bool(true));
     assert_eq!(index["pdf"]["generated"], Value::Bool(false));
 }
+
+#[test]
+fn cli_fmt_rejects_selfdoc_forms() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("selfdoc.dtl");
+    fs::write(
+        &src,
+        r#"
+        ; syntax: surface
+        (プロジェクト :名前 "dtl" :概要 "self")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("fmt")
+        .arg(&src)
+        .arg("--check")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED"));
+}

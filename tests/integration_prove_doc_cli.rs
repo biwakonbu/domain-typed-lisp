@@ -122,6 +122,9 @@ fn cli_doc_generates_bundle_only_when_proved() {
     .expect("valid markdown doc index");
     assert_eq!(index["files"], json!(["spec.md", "proof-trace.json"]));
     assert_eq!(index["status"], "ok");
+    assert_eq!(index["schema_version"], "2.0.0");
+    assert_eq!(index["profile"], "standard");
+    assert_eq!(index["intermediate"]["dsl"], Value::Null);
 
     let ng_src = dir.path().join("doc_ng.dtl");
     let ng_out = dir.path().join("doc_out_ng");
@@ -190,7 +193,20 @@ fn cli_doc_json_generates_json_bundle() {
         serde_json::from_slice(&fs::read(out.join("spec.json")).expect("read json spec"))
             .expect("valid spec json");
     let expected_spec = json!({
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
+        "profile": "standard",
+        "summary": {
+            "total": 1,
+            "proved": 1,
+            "failed": 0
+        },
+        "self_description": {
+            "project": null,
+            "modules": [],
+            "references": [],
+            "contracts": [],
+            "quality_gates": []
+        },
         "sorts": [
             {"name": "Resource"}
         ],
@@ -220,6 +236,9 @@ fn cli_doc_json_generates_json_bundle() {
             .expect("valid doc index json");
     assert_eq!(index["files"], json!(["spec.json", "proof-trace.json"]));
     assert_eq!(index["status"], "ok");
+    assert_eq!(index["schema_version"], "2.0.0");
+    assert_eq!(index["profile"], "standard");
+    assert_eq!(index["intermediate"]["dsl"], Value::Null);
 }
 
 #[test]
@@ -246,6 +265,8 @@ fn cli_doc_generates_bundle_for_japanese_example() {
         &fs::read(out.join("proof-trace.json")).expect("read japanese proof trace"),
     )
     .expect("valid japanese proof trace");
+    assert_eq!(trace["schema_version"], "2.0.0");
+    assert_eq!(trace["profile"], "standard");
     assert!(
         trace["obligations"]
             .as_array()

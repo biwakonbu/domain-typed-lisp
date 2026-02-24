@@ -1,9 +1,9 @@
-# エラーコード別トラブルシュート（v0.4）
+# エラーコード別トラブルシュート（v0.5）
 
-この文書は `dtl` v0.4 の主要エラーコードと lint warning について、原因と復旧手順を運用視点で整理したものです。
+この文書は `dtl` v0.5 の主要エラーコードと lint warning について、原因と復旧手順を運用視点で整理したものです。
 
 ## 1. 対象バージョン
-- DSL 仕様: v0.4（`docs/language-spec.md` 準拠）
+- DSL 仕様: v0.5（`docs/language-spec.md` 準拠）
 - 実装: `dtl` 本体（Rust, `rust-toolchain.toml` は `1.93.0`）
 
 ## 2. 使い方
@@ -324,3 +324,39 @@
 1. `dtl fmt <FILE>` を実行する。
 2. 再度 `dtl fmt <FILE> --check` を実行する。
 3. CI では `--deny-warnings` と併用して運用する。
+
+---
+
+## 14. `E-FMT-SELFDOC-UNSUPPORTED` / `E-SELFDOC-*`
+
+### 14.1 `E-FMT-SELFDOC-UNSUPPORTED`
+- 症状: `dtl fmt` 実行時に selfdoc form を含む入力で即時失敗する。
+- 原因: selfdoc form は parser フロントで `fact` 群へデシュガされるため、元フォームを保持した再整形をサポートしない。
+- 対処:
+1. `selfdoc.generated.dtl` に対して `fmt` を適用しない。
+2. selfdoc の更新は `dtl selfdoc ...` で再生成する。
+
+### 14.2 `E-SELFDOC-CONFIG`
+- 症状: 設定ファイル不在、TOML 構文不正、category 不正で失敗する。
+- 対処:
+1. `<repo>/.dtl-selfdoc.toml` を配置する。
+2. `version = 1`、`scan`、`classify` の必須項目を確認する。
+3. `classify.category` は `source/test/doc/ci/script/tooling/example/config/asset/other` のみを使う。
+
+### 14.3 `E-SELFDOC-SCAN` / `E-SELFDOC-CLASSIFY`
+- 症状: 走査対象 0 件、またはファイル分類が 0 件一致/複数一致で失敗する。
+- 対処:
+1. `scan.include/exclude` と `.gitignore` の組み合わせを確認する。
+2. 各ファイルが classify ルールにちょうど 1 つ一致するようにパターンを調整する。
+
+### 14.4 `E-SELFDOC-REF`
+- 症状: 抽出したローカル参照先が存在せず fail-fast する。
+- 対処:
+1. `.dtl` の `import`、Markdown リンク、`\{\{#include ...\}\}` 記法、workflow の `uses/path` を点検する。
+2. 相対パス基準で存在確認する（`.dtl`/Markdown は参照元ファイル基準、workflow の `uses/path` は repo ルート基準）。
+
+### 14.5 `E-SELFDOC-CONTRACT` / `E-SELFDOC-GATE`
+- 症状: CLI 契約抽出または quality gate 抽出で失敗する。
+- 対処:
+1. README または `docs/language-spec.md` に `dtl <subcommand>` 記述を用意する。
+2. `.github/workflows/*.yml` の `jobs.*.steps[].run` 記述を確認する。

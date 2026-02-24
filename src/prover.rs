@@ -12,8 +12,8 @@ use crate::stratify::compute_strata;
 use crate::typecheck::check_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
-pub const PROOF_TRACE_SCHEMA_VERSION: &str = "1.0.0";
-pub const DOC_SPEC_SCHEMA_VERSION: &str = "1.0.0";
+pub const PROOF_TRACE_SCHEMA_VERSION: &str = "2.0.0";
+pub const DOC_SPEC_SCHEMA_VERSION: &str = "2.0.0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocBundleFormat {
@@ -24,7 +24,16 @@ pub enum DocBundleFormat {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProofTrace {
     pub schema_version: String,
+    pub profile: String,
+    pub summary: ProofSummary,
     pub obligations: Vec<ObligationTrace>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProofSummary {
+    pub total: usize,
+    pub proved: usize,
+    pub failed: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +80,9 @@ struct QuantifiedVarSpec {
 #[derive(Debug, Serialize)]
 struct JsonSpec {
     schema_version: String,
+    profile: String,
+    summary: ProofSummary,
+    self_description: DocSelfDescription,
     sorts: Vec<JsonSpecSort>,
     data_declarations: Vec<JsonSpecDataDecl>,
     relations: Vec<JsonSpecRelation>,
@@ -111,6 +123,56 @@ struct JsonSpecProofStatus {
     id: String,
     kind: String,
     result: String,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct DocSelfDescription {
+    pub project: Option<DocProject>,
+    pub modules: Vec<DocModule>,
+    pub references: Vec<DocReference>,
+    pub contracts: Vec<DocContract>,
+    pub quality_gates: Vec<DocQualityGate>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocProject {
+    pub name: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocModule {
+    pub name: String,
+    pub path: String,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocReference {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocContract {
+    pub name: String,
+    pub source: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocQualityGate {
+    pub name: String,
+    pub command: String,
+    pub source: String,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DocBundleOptions {
+    pub profile: Option<String>,
+    pub self_description: Option<DocSelfDescription>,
+    pub intermediate_dsl: Option<String>,
 }
 
 pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
@@ -183,8 +245,16 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
         }
     }
 
+    let proved = traces.iter().filter(|o| o.result == "proved").count();
+    let total = traces.len();
     Ok(ProofTrace {
         schema_version: PROOF_TRACE_SCHEMA_VERSION.to_string(),
+        profile: "standard".to_string(),
+        summary: ProofSummary {
+            total,
+            proved,
+            failed: total.saturating_sub(proved),
+        },
         obligations: traces,
     })
 }
@@ -216,6 +286,16 @@ pub fn generate_doc_bundle(
     out_dir: &Path,
     format: DocBundleFormat,
 ) -> Result<(), Vec<Diagnostic>> {
+    generate_doc_bundle_with_options(program, trace, out_dir, format, DocBundleOptions::default())
+}
+
+pub fn generate_doc_bundle_with_options(
+    program: &Program,
+    trace: &ProofTrace,
+    out_dir: &Path,
+    format: DocBundleFormat,
+    options: DocBundleOptions,
+) -> Result<(), Vec<Diagnostic>> {
     if has_failed_obligation(trace) {
         return Err(vec![Diagnostic::new(
             "E-PROVE",
@@ -238,7 +318,13 @@ pub fn generate_doc_bundle(
     let proof_path = out_dir.join("proof-trace.json");
     write_proof_trace(&proof_path, trace).map_err(|d| vec![d])?;
 
-    let (spec_filename, spec_content) = render_spec_content(program, trace, format)?;
+    let profile = options
+        .profile
+        .clone()
+        .unwrap_or_else(|| trace.profile.clone());
+    let self_description = options.self_description.unwrap_or_default();
+    let (spec_filename, spec_content) =
+        render_spec_content(program, trace, format, &profile, &self_description)?;
     let spec_path = out_dir.join(spec_filename);
     fs::write(&spec_path, spec_content).map_err(|e| {
         vec![Diagnostic::new(
@@ -250,8 +336,12 @@ pub fn generate_doc_bundle(
 
     let index = serde_json::json!({
         "schema_version": DOC_SPEC_SCHEMA_VERSION,
+        "profile": profile,
         "files": [spec_filename, "proof-trace.json"],
-        "status": "ok"
+        "status": "ok",
+        "intermediate": {
+            "dsl": options.intermediate_dsl
+        }
     });
     let index_path = out_dir.join("doc-index.json");
     fs::write(
@@ -273,11 +363,16 @@ fn render_spec_content(
     program: &Program,
     trace: &ProofTrace,
     format: DocBundleFormat,
+    profile: &str,
+    self_description: &DocSelfDescription,
 ) -> Result<(&'static str, String), Vec<Diagnostic>> {
     match format {
-        DocBundleFormat::Markdown => Ok(("spec.md", render_spec_markdown(program, trace))),
+        DocBundleFormat::Markdown => Ok((
+            "spec.md",
+            render_spec_markdown(program, trace, profile, self_description),
+        )),
         DocBundleFormat::Json => {
-            let spec = render_spec_json(program, trace);
+            let spec = render_spec_json(program, trace, profile, self_description.clone());
             let rendered = serde_json::to_string_pretty(&spec).map_err(|e| {
                 vec![Diagnostic::new(
                     "E-IO",
@@ -290,7 +385,12 @@ fn render_spec_content(
     }
 }
 
-fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
+fn render_spec_markdown(
+    program: &Program,
+    trace: &ProofTrace,
+    profile: &str,
+    self_description: &DocSelfDescription,
+) -> String {
     let mut out = String::new();
     let proved = trace
         .obligations
@@ -311,6 +411,11 @@ fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
         program.relations.len(),
         program.defns.len(),
         program.asserts.len()
+    ));
+    out.push_str(&format!("- profile: `{}`\n", profile));
+    out.push_str(&format!(
+        "- schema_version: proof=`{}` / doc=`{}`\n",
+        PROOF_TRACE_SCHEMA_VERSION, DOC_SPEC_SCHEMA_VERSION
     ));
     out.push_str(&format!(
         "- 証明義務: {} 件（proved: {} / failed: {}）\n\n",
@@ -367,6 +472,12 @@ fn render_spec_markdown(program: &Program, trace: &ProofTrace) -> String {
         out.push_str(&format!("- `{}`: `{}`\n", o.id, o.result));
     }
     out.push('\n');
+
+    if let Some(project) = &self_description.project {
+        out.push_str("## 自己記述プロジェクト\n");
+        out.push_str(&format!("- 名前: `{}`\n", project.name));
+        out.push_str(&format!("- 概要: {}\n\n", project.summary));
+    }
 
     out.push_str("## Mermaid: 型・関係図\n\n");
     out.push_str("```mermaid\n");
@@ -529,9 +640,17 @@ fn collect_expr_call_names(expr: &Expr, out: &mut HashSet<String>) {
     }
 }
 
-fn render_spec_json(program: &Program, trace: &ProofTrace) -> JsonSpec {
+fn render_spec_json(
+    program: &Program,
+    trace: &ProofTrace,
+    profile: &str,
+    self_description: DocSelfDescription,
+) -> JsonSpec {
     JsonSpec {
         schema_version: DOC_SPEC_SCHEMA_VERSION.to_string(),
+        profile: profile.to_string(),
+        summary: trace.summary.clone(),
+        self_description,
         sorts: program
             .sorts
             .iter()

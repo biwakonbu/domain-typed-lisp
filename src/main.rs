@@ -3,13 +3,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::{collections::HashSet, fmt::Write};
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dtl::{
-    Diagnostic, DocBundleFormat, FormatOptions, LintDiagnostic, LintOptions, Program, ProofTrace,
-    Span, check_program, format_source, generate_doc_bundle, has_failed_obligation, lint_program,
-    parse_program_with_source, prove_program, write_proof_trace,
+    Diagnostic, DocBundleFormat, DocBundleOptions, FormatOptions, LintDiagnostic, LintOptions,
+    Program, ProofTrace, Span, check_program, format_source, generate_doc_bundle_with_options,
+    has_failed_obligation, lint_program, parse_program_with_source, prove_program,
+    write_proof_trace,
 };
 use serde::Serialize;
+
+mod selfdoc;
 
 #[derive(Debug, Parser)]
 #[command(name = "dtl")]
@@ -62,6 +65,18 @@ enum Command {
         check: bool,
         #[arg(long, default_value_t = false)]
         stdout: bool,
+    },
+    Selfdoc {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_enum, default_value_t = DocFormat::Markdown)]
+        format: DocFormat,
+        #[arg(long, default_value_t = false)]
+        pdf: bool,
     },
 }
 
@@ -168,6 +183,13 @@ fn main() {
             check,
             stdout,
         } => run_fmt(&files, check, stdout),
+        Command::Selfdoc {
+            repo,
+            config,
+            out,
+            format,
+            pdf,
+        } => run_selfdoc(&repo, config.as_deref(), &out, format, pdf),
     };
     std::process::exit(exit_code);
 }
@@ -286,7 +308,102 @@ fn run_doc(files: &[PathBuf], out: &Path, format: DocFormat, pdf: bool) -> i32 {
         }
     };
 
-    if let Err(diags) = generate_doc_bundle(&program, &trace, out, as_doc_bundle_format(format)) {
+    if let Err(diags) = generate_doc_bundle_with_options(
+        &program,
+        &trace,
+        out,
+        as_doc_bundle_format(format),
+        DocBundleOptions::default(),
+    ) {
+        for d in diags {
+            eprintln!("{d}");
+        }
+        return 1;
+    }
+
+    if pdf {
+        if format == DocFormat::Markdown {
+            if let Err(message) = try_generate_pdf(out) {
+                eprintln!("warning: {message}");
+            }
+        } else {
+            let message = "JSON 形式では PDF 生成をスキップしました".to_string();
+            let _ = update_doc_index_pdf(out, true, false, Some(message.clone()));
+            eprintln!("warning: {message}");
+        }
+    } else {
+        let _ = update_doc_index_pdf(out, false, false, None);
+    }
+
+    println!("ok");
+    0
+}
+
+fn run_selfdoc(
+    repo: &Path,
+    config: Option<&Path>,
+    out: &Path,
+    format: DocFormat,
+    pdf: bool,
+) -> i32 {
+    let subcommands = Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_string())
+        .collect::<Vec<_>>();
+
+    let prepared = match selfdoc::prepare_selfdoc(repo, config, out, &subcommands) {
+        Ok(prepared) => prepared,
+        Err(selfdoc::PrepareError::MissingConfig { path, template }) => {
+            eprintln!(
+                "E-SELFDOC-CONFIG: 設定ファイルが見つかりません: {}",
+                path.display()
+            );
+            eprintln!("以下を {} に保存してください:", path.display());
+            eprintln!("{template}");
+            return 2;
+        }
+        Err(selfdoc::PrepareError::Diagnostics(diags)) => {
+            for diag in diags {
+                eprintln!("{diag}");
+            }
+            return 1;
+        }
+    };
+
+    let files = vec![prepared.generated_file.clone()];
+    let program = match load_program(&files) {
+        Ok(program) => program,
+        Err(diags) => {
+            for d in diags {
+                eprintln!("{d}");
+            }
+            return 1;
+        }
+    };
+
+    let mut trace = match prove_program(&program) {
+        Ok(trace) => trace,
+        Err(diags) => {
+            for d in attach_source_if_missing(diags, &files) {
+                eprintln!("{d}");
+            }
+            return 1;
+        }
+    };
+    trace.profile = "selfdoc".to_string();
+
+    let options = DocBundleOptions {
+        profile: Some("selfdoc".to_string()),
+        self_description: Some(prepared.self_description),
+        intermediate_dsl: Some(prepared.generated_relative),
+    };
+    if let Err(diags) = generate_doc_bundle_with_options(
+        &program,
+        &trace,
+        out,
+        as_doc_bundle_format(format),
+        options,
+    ) {
         for d in diags {
             eprintln!("{d}");
         }
@@ -391,6 +508,13 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
                 return 1;
             }
         };
+        if contains_selfdoc_form(&src) {
+            eprintln!(
+                "{}: E-FMT-SELFDOC-UNSUPPORTED: selfdoc form は fmt 対象外です",
+                file.display()
+            );
+            return 1;
+        }
         let formatted = match format_source(&src, FormatOptions::default()) {
             Ok(rendered) => rendered,
             Err(diags) => {
@@ -416,6 +540,22 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
     }
 
     if check && has_diff { 1 } else { 0 }
+}
+
+fn contains_selfdoc_form(src: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "(project",
+        "(module",
+        "(reference",
+        "(contract",
+        "(quality-gate",
+        "(プロジェクト",
+        "(モジュール",
+        "(参照",
+        "(契約",
+        "(品質ゲート",
+    ];
+    MARKERS.iter().any(|marker| src.contains(marker))
 }
 
 fn as_doc_bundle_format(format: DocFormat) -> DocBundleFormat {

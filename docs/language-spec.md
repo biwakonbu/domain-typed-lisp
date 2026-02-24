@@ -1,9 +1,9 @@
-# 言語仕様（v0.4）
+# 言語仕様（v0.5）
 
 ## 0. 設計原則
 - 本言語はドメイン整合性検証専用の DSL であり、汎用計算系ではない。
 - 言語内計算は純粋（副作用なし）・非破壊であり、外部状態に依存しない。
-- 関数は全域性を要求する。v0.4 でも自己再帰は条件付き許可、相互再帰は禁止する。
+- 関数は全域性を要求する。v0.5 でも自己再帰は条件付き許可、相互再帰は禁止する。
 - 構文は Core（英語キーワード）と Surface（タグ付き可読構文）の二層で提供し、同一 AST に収束する。
 
 ## 1. 形式
@@ -18,10 +18,10 @@
 
 ### 1.1 Atom 正規化境界（引用符・エスケープ）
 - `"` で始まり `"` で終わる Atom は quoted Atom とみなし、NFC 正規化しない。
-- quoted Atom は「文字列リテラル」ではなく、エスケープ解釈（`\n` / `\t` / `\"` など）を行わない。
-- quoted Atom 内のバックスラッシュはそのまま保持される。
-- `import` は quoted Atom の先頭/末尾 `"` のみを除去して path として扱う。
-- 字句境界は空白・`(`・`)`・`;` で決まるため、quoted Atom 内でも空白や `;` を含むトークンは v0.4 でも未対応。
+- quoted Atom は v0.5 で文字列リテラルとして扱い、`\\` / `\"` / `\n` / `\t` / `\r` を解釈する。
+- quoted Atom 内の空白・`;`・括弧はトークン境界として分割されない。
+- 未対応エスケープは `E-PARSE` で失敗する。
+- `import` は quoted Atom の先頭/末尾 `"` を除去した値（エスケープ展開後）を path として扱う。
 
 ## 2. CLI
 - `dtl check <FILE>... [--format text|json]`
@@ -30,6 +30,10 @@
   - 有限モデル上で証明義務を全探索し、証跡を生成する。
 - `dtl doc <FILE>... --out DIR [--format markdown|json]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
+- `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
+  - `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を実行し、自己記述成果物を生成する。
+  - `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
+  - 設定ファイル未配置時はテンプレートを stderr に出力し `exit code = 2` で終了する。
 - `dtl lint <FILE>... [--format text|json] [--deny-warnings] [--semantic-dup]`
   - 重複検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）を警告として出力する。
 - `dtl fmt <FILE>... [--check] [--stdout]`
@@ -114,6 +118,19 @@
                  (契約登録 ?契約ID)))
 ```
 
+### 3.11 selfdoc Surface（タグ付き）例
+```dtl
+; syntax: surface
+(プロジェクト :名前 "domain-typed-lisp" :概要 "自己記述 DSL")
+(モジュール :名前 "README.md" :パス "README.md" :カテゴリ doc)
+(参照 :元 "README.md" :先 "docs/language-spec.md")
+(契約 :名前 "cli::check" :出典 "README.md" :パス "src/main.rs")
+(品質ゲート :名前 "ci:quality:1" :コマンド "cargo test" :出典 ".github/workflows/ci.yml" :必須 yes)
+```
+
+- 日英エイリアス: `project/プロジェクト`, `module/モジュール`, `reference/参照`, `contract/契約`, `quality-gate/品質ゲート`
+- これらは parser フロントで既存 Core `fact` 群へデシュガされる。
+
 ## 4. 式
 ```text
 Expr = Var | Symbol | Int | Bool
@@ -159,7 +176,7 @@ term = var | symbol | int | bool | (Ctor term*)
     - `data` constructor を業務語彙の閉集合として利用する（正規名強制）。
     - `sort` は開集合として扱う。
     - 概念変更（v1/v2 差分や外部連携差分）は型を分離し、`defn` で明示変換する。
-    - 同義語 alias 機能は v0.4 でも提供しない。
+    - 同義語 alias 機能は v0.5 でも提供しない。
 - `prove`
   - 証明義務:
     - `defn` の戻り値 Refinement 含意
@@ -169,7 +186,8 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 8. 生成物
 - `prove --out DIR`:
-  - `proof-trace.json`（`schema_version = "1.0.0"`）
+  - `proof-trace.json`（`schema_version = "2.0.0"`）
+  - 必須フィールド: `profile`（`standard|selfdoc`）, `summary`（`total/proved/failed`）
 - `doc --out DIR --format markdown`:
   - `spec.md`
   - `proof-trace.json`
@@ -179,7 +197,9 @@ term = var | symbol | int | bool | (Ctor term*)
   - `spec.json`
   - `proof-trace.json`
   - `doc-index.json`
-- `doc-index.json` は `pdf` セクション（`requested/generated/message`）を持つ。
+- `spec.json` は v0.5 で `profile` / `summary` / `self_description` を必須で持つ。
+- `doc-index.json` は `schema_version = "2.0.0"` で、`profile` / `intermediate.dsl` / `pdf` を持つ。
+- `selfdoc --out DIR` は上記に加え `selfdoc.generated.dtl` を出力する。
 - 未証明義務が 1 つでもある場合、`doc` は失敗する。
 
 ## 9. エラー分類
@@ -195,6 +215,13 @@ term = var | symbol | int | bool | (Ctor term*)
 - `E-DATA`: `data` 宣言違反（重複・型名衝突・constructor 不整合）
 - `E-MATCH`: `match` 検査違反（非網羅・到達不能・型不整合）
 - `E-PROVE`: 証明失敗 / universe 不備 / 反例検出
+- `E-FMT-SELFDOC-UNSUPPORTED`: selfdoc form に対する `fmt` 非対応
+- `E-SELFDOC-CONFIG`: selfdoc 設定不正
+- `E-SELFDOC-SCAN`: selfdoc 走査対象不正
+- `E-SELFDOC-CLASSIFY`: selfdoc 分類不正
+- `E-SELFDOC-REF`: selfdoc 参照抽出/参照先不整合
+- `E-SELFDOC-CONTRACT`: CLI 契約抽出不整合
+- `E-SELFDOC-GATE`: quality gate 抽出不整合
 
 ## 10. lint コード
 - `L-DUP-EXACT`: 構文正規化後に確定重複
