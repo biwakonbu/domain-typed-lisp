@@ -13,7 +13,7 @@ cargo install mdbook --locked
 ## ビルド
 
 ```bash
-# examples から利用例カタログを再生成
+# 利用例定義（examples/catalog.tsv）を更新後に再生成
 ./scripts/generate-examples-catalog.sh
 
 mdbook build docs-site
@@ -22,6 +22,7 @@ mdbook build docs-site
 生成先:
 
 - `docs-site/book/index.html`
+- `docs-site/src/tutorial/examples-catalog.md`（自動生成）
 
 ## ローカル確認
 

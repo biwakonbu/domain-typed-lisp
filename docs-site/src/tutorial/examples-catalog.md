@@ -1,6 +1,6 @@
 # 利用例カタログ
 
-<!-- このファイルは scripts/generate-examples-catalog.sh で自動生成されます。 -->
+<!-- このファイルは scripts/generate-examples-catalog.sh と examples/catalog.tsv から自動生成されます。 -->
 
 `examples/` に同梱しているサンプルを、用途別に引けるように整理した一覧です。
 

@@ -3,7 +3,7 @@
 このリポジトリには `docs-site` を Pages 配信するワークフローを追加しています。
 
 - ワークフロー: `.github/workflows/docs-site.yml`
-- `./scripts/generate-examples-catalog.sh` で `examples/` から利用例カタログを再生成
+- 利用例定義は `examples/catalog.tsv`（これを元に `./scripts/generate-examples-catalog.sh` がカタログを生成）
 - `main` ブランチ push 時に `mdbook build docs-site` を実行
 - 成果物 `docs-site/book` を Pages へ deploy
 - 現在の Pages 設定: `build_type=workflow` / 公開 URL `https://biwakonbu.github.io/domain-typed-lisp/`
