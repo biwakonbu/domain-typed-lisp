@@ -22,6 +22,9 @@ bun run --cwd editors/vscode-dtl package
 
 ## インストール（ローカル）
 
+現在は VS Code Marketplace / Open VSX 未公開です。  
+このリポジトリから `.vsix` を生成してインストールしてください。
+
 1. VSCode/Cursor の Extensions 画面を開く
 2. `Install from VSIX...` を選択
 3. `editors/vscode-dtl/*.vsix` を選択

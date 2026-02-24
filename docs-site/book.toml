@@ -6,7 +6,7 @@ language = "ja"
 src = "src"
 
 [output.html]
-default-theme = "light"
+default-theme = "navy"
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/biwakonbu/domain-typed-lisp"
 site-url = "/domain-typed-lisp/"

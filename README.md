@@ -93,6 +93,14 @@ bun run --cwd editors/vscode-dtl package
 - mdBook 用ハイライト: `docs-site/theme/dtl-highlight.js`
 - 拡張定義: `editors/vscode-dtl/package.json`
 
+### 取得元とインストール
+- 現在は VS Code Marketplace / Open VSX 未公開。
+- 取得元はこのリポジトリ（`main`）のみ。
+- インストール方法:
+  1. `bun run --cwd editors/vscode-dtl package` で `editors/vscode-dtl/dtl-0.1.0.vsix` を生成
+  2. VSCode/Cursor の Extensions 画面で `Install from VSIX...` を選択
+  3. 生成した `.vsix` を指定してインストール
+
 ## CLI
 
 ### `check`
