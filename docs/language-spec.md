@@ -200,10 +200,12 @@ term = var | symbol | int | bool | (Ctor term*)
 - `L-DUP-EXACT`: 構文正規化後に確定重複
 - `L-DUP-MAYBE`: 有限モデルでの双方向検証（`rule/assert` 含意・`defn` 戻り一致）による重複候補
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定を universe 不足でスキップ
+- `L-DUP-SKIP-EVAL-DEPTH`: `defn` 比較中に評価深さ上限へ到達したため、入力点の一部を評価できずスキップ
 - `L-UNUSED-DECL`: 未使用宣言
 
-`L-DUP-MAYBE`/`L-DUP-SKIP-UNIVERSE` の判定前提:
+`L-DUP-MAYBE`/`L-DUP-SKIP-*` の判定前提:
 - `--semantic-dup` 指定時のみ実行する。
 - 必須 `universe` は relation 引数型 + `assert/defn` 量化変数型を合成して決定する。
+- function 型パラメータを持つ `defn` は、`universe` 上の有限関数モデルを列挙して比較する。
 - `confidence` はモデルカバレッジ（`checked_points / model_points`）と反例探索結果（counterexample 有無）から算出する。
 - 出力範囲は `0.00`〜`0.99`（小数第2位丸め）。

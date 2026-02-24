@@ -29,6 +29,14 @@ jobs:
           files: lcov.info
           fail_ci_if_error: false
 
+  docs-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@mdbook
+      - name: mdbook build
+        run: mdbook build docs-site
+
   cli-check:
     runs-on: ubuntu-latest
     steps:

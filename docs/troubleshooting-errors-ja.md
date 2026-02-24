@@ -273,22 +273,25 @@
 
 ---
 
-## 11. `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE`（lint warning）
+## 11. `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH`（lint warning）
 
 ### 11.1 典型症状
 - `L-DUP-MAYBE`: 有限モデル上で同値の重複候補
 - `L-DUP-SKIP-UNIVERSE`: semantic duplicate 判定スキップ
+- `L-DUP-SKIP-EVAL-DEPTH`: `defn` 比較で評価深さ上限に到達
 
 ### 11.2 主な原因
 - `rule/assert` が有限モデル上で双方向含意になる
 - `defn` が全入力で同じ戻り値を返す
 - `--semantic-dup` 実行時に universe が不足
+- 深い再帰 `defn` が評価深さ上限を超える
 
 ### 11.3 確認手順
 1. `--semantic-dup` を付けた実行か確認する。
 2. `L-DUP-SKIP-UNIVERSE` が出る場合は不足型の `universe` を追加する。
 3. `L-DUP-MAYBE` は `confidence`（0.00〜0.99）を併せて確認し、低スコアは追加検証（universe 拡張・反例作成）を行う。
-4. 厳密判定の再現には `examples/semantic_dup_advanced.dtl` を使い、`rule/assert/defn` の3種別で検証する。
+4. `L-DUP-SKIP-EVAL-DEPTH` が出る場合は `depth_limit` / `checked` / `skipped` を確認し、必要なら `universe` を縮小して再実行する。
+5. 厳密判定の再現には `examples/semantic_dup_advanced.dtl` を使い、`rule/assert/defn` の3種別で検証する。
 
 ---
 

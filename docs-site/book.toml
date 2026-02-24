@@ -1,0 +1,16 @@
+[book]
+title = "domain-typed-lisp ドキュメント"
+description = "domain-typed-lisp (dtl) のユーザー向けドキュメントサイト"
+authors = ["biwakonbu"]
+language = "ja"
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/biwakonbu/domain-typed-lisp"
+site-url = "/domain-typed-lisp/"
+
+[output.html.fold]
+enable = true
+level = 1

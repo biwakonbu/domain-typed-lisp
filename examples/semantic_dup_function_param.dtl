@@ -1,0 +1,5 @@
+(defn passthrough_a ((f (-> (Symbol) Bool))) (-> (Symbol) Bool) f)
+(defn passthrough_b ((g (-> (Symbol) Bool))) (-> (Symbol) Bool) (if true g g))
+
+(universe Symbol (alice bob))
+(universe Bool (true false))
