@@ -17,11 +17,14 @@ describe("dtl syntax generator", () => {
     expect(once).toContain(":引数");
   });
 
-  it("generates highlight.js runtime with dtl+lisp compatibility", () => {
+  it("generates highlight.js runtime with dtl+lisp+terminal compatibility", () => {
     const script = generateHighlightJsScript(DTL_SYNTAX_SPEC);
 
     expect(script).toContain("registerLanguage(\"dtl\"");
     expect(script).toContain("pre code.language-dtl, pre code.language-lisp");
+    expect(script).toContain("pre code.language-bash");
+    expect(script).toContain("highlightTerminalBlock");
+    expect(script).toContain("className: \"keyword\"");
     expect(script).toContain("language-dtl");
     expect(script).toContain("surfaceTagPattern");
   });
