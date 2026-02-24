@@ -1030,14 +1030,20 @@ mod tests {
         assert!(rendered_formula_refine.contains("(not (q))"));
         assert!(rendered_formula_refine.contains("x"));
 
-        assert_eq!(render_atom_rule(&Atom {
-            pred: "z".to_string(),
-            terms: vec![],
-        }), "(z)");
-        assert_eq!(render_atom_refine(&Atom {
-            pred: "z".to_string(),
-            terms: vec![],
-        }), "(z)");
+        assert_eq!(
+            render_atom_rule(&Atom {
+                pred: "z".to_string(),
+                terms: vec![],
+            }),
+            "(z)"
+        );
+        assert_eq!(
+            render_atom_refine(&Atom {
+                pred: "z".to_string(),
+                terms: vec![],
+            }),
+            "(z)"
+        );
 
         let term_ctor_no_args = LogicTerm::Ctor {
             name: "nil".to_string(),
@@ -1064,22 +1070,34 @@ mod tests {
             span: span(),
         };
 
-        assert_eq!(render_expr(&Expr::Var {
-            name: "v".to_string(),
-            span: span(),
-        }), "v");
-        assert_eq!(render_expr(&Expr::Symbol {
-            value: "sym".to_string(),
-            span: span(),
-        }), "sym");
-        assert_eq!(render_expr(&Expr::Int {
-            value: 7,
-            span: span(),
-        }), "7");
-        assert_eq!(render_expr(&Expr::Bool {
-            value: false,
-            span: span(),
-        }), "false");
+        assert_eq!(
+            render_expr(&Expr::Var {
+                name: "v".to_string(),
+                span: span(),
+            }),
+            "v"
+        );
+        assert_eq!(
+            render_expr(&Expr::Symbol {
+                value: "sym".to_string(),
+                span: span(),
+            }),
+            "sym"
+        );
+        assert_eq!(
+            render_expr(&Expr::Int {
+                value: 7,
+                span: span(),
+            }),
+            "7"
+        );
+        assert_eq!(
+            render_expr(&Expr::Bool {
+                value: false,
+                span: span(),
+            }),
+            "false"
+        );
         assert_eq!(render_expr(&call0), "(f0)");
         assert_eq!(render_expr(&call1), "(f1 x)");
 
@@ -1194,7 +1212,10 @@ mod tests {
             ],
             span: span(),
         };
-        assert_eq!(render_expr(&match_expr), "(match xs ((leaf) 0) ((node n) n))");
+        assert_eq!(
+            render_expr(&match_expr),
+            "(match xs ((leaf) 0) ((node n) n))"
+        );
     }
 
     #[test]
