@@ -64,7 +64,7 @@ cargo install mdbook --locked
 ```
 
 - 設定: `docs-site/book.toml`
-- 利用例定義: `examples/catalog.tsv`
+- 利用例定義: `examples/catalog.tsv`（`[first]` などのセクション見出し + TSV 行）
 - 目次: `docs-site/src/SUMMARY.md`
 - 生成物: `docs-site/book/index.html`
 - GitHub Pages 運用: `.github/workflows/docs-site.yml`

@@ -124,20 +124,43 @@ rows_error=""
 seen_files=()
 
 line_no=0
-while IFS=$'\t' read -r file category purpose command extra; do
+current_category=""
+while IFS= read -r raw_line || [ -n "$raw_line" ]; do
   line_no=$((line_no + 1))
+  line="${raw_line%$'\r'}"
 
-  if [[ -z "$file" || "$file" =~ ^[[:space:]]*# ]]; then
+  if [[ -z "${line//[[:space:]]/}" ]]; then
     continue
   fi
 
-  if [ -n "$extra" ]; then
-    echo "catalog.tsv:${line_no}: 列数が不正です（期待: 4列TSV）" >&2
+  if [[ "$line" =~ ^[[:space:]]*# ]]; then
+    continue
+  fi
+
+  if [[ "$line" =~ ^\[([a-z0-9_-]+)\][[:space:]]*(.*)$ ]]; then
+    category="${BASH_REMATCH[1]}"
+    if ! category_title "$category" >/dev/null 2>&1; then
+      echo "catalog.tsv:${line_no}: 未知の section です: $category" >&2
+      exit 1
+    fi
+    current_category="$category"
+    continue
+  fi
+
+  if [ -z "$current_category" ]; then
+    echo "catalog.tsv:${line_no}: セクション見出し [first|dup|multi|recursive|error] より前に行データがあります" >&2
     exit 1
   fi
 
-  if [ -z "$category" ] || [ -z "$purpose" ] || [ -z "$command" ]; then
-    echo "catalog.tsv:${line_no}: file/category/purpose/command は必須です" >&2
+  IFS=$'\t' read -r file purpose command extra <<<"$line"
+
+  if [ -n "$extra" ]; then
+    echo "catalog.tsv:${line_no}: 列数が不正です（期待: 3列TSV）" >&2
+    exit 1
+  fi
+
+  if [ -z "$file" ] || [ -z "$purpose" ] || [ -z "$command" ]; then
+    echo "catalog.tsv:${line_no}: file/purpose/command は必須です" >&2
     exit 1
   fi
 
@@ -151,13 +174,8 @@ while IFS=$'\t' read -r file category purpose command extra; do
     exit 1
   fi
 
-  if ! category_title "$category" >/dev/null 2>&1; then
-    echo "catalog.tsv:${line_no}: 未知の category です: $category" >&2
-    exit 1
-  fi
-
   printf -v row '| `%s` | %s | `%s` |\n' "examples/$file" "$purpose" "$command"
-  append_row_for_category "$category" "$row"
+  append_row_for_category "$current_category" "$row"
   seen_files+=("$file")
 done <"$CATALOG_DEF"
 
