@@ -11,37 +11,37 @@
 .navy,
 .ayu,
 html:not(.js) {
-  --bg: #0b1324;
-  --fg: #d8dee9;
-  --sidebar-bg: #101a33;
-  --sidebar-fg: #cfd9e7;
-  --sidebar-non-existant: #5a6885;
+  --bg: #2c3648;
+  --fg: #e5e9f0;
+  --sidebar-bg: #313d53;
+  --sidebar-fg: #d8dee9;
+  --sidebar-non-existant: #7d8aa2;
   --sidebar-active: #88c0d0;
-  --sidebar-spacer: #1e2a45;
+  --sidebar-spacer: #434c5e;
   --scrollbar: #5e81ac;
-  --icons: #7e8eaf;
-  --icons-hover: #d5dfef;
+  --icons: #9aabc2;
+  --icons-hover: #eceff4;
   --links: #8fbcbb;
   --inline-code-color: #8fbcbb;
-  --theme-popup-bg: #111d36;
-  --theme-popup-border: #3a4a6a;
-  --theme-hover: #1c2b49;
-  --quote-bg: rgba(129, 161, 193, 0.11);
-  --quote-border: rgba(129, 161, 193, 0.38);
+  --theme-popup-bg: #3a465c;
+  --theme-popup-border: #5c6a84;
+  --theme-hover: #45536d;
+  --quote-bg: rgba(143, 188, 187, 0.1);
+  --quote-border: rgba(143, 188, 187, 0.32);
   --warning-border: #d08770;
-  --table-border-color: rgba(94, 129, 172, 0.32);
-  --table-header-bg: rgba(94, 129, 172, 0.25);
-  --table-alternate-bg: rgba(30, 42, 69, 0.55);
-  --searchbar-border-color: #3f5075;
-  --searchbar-bg: #101a31;
-  --searchbar-fg: #d8dee9;
-  --searchbar-shadow-color: rgba(143, 188, 187, 0.35);
-  --searchresults-header-fg: #9fb0ca;
-  --searchresults-border-color: rgba(94, 129, 172, 0.4);
-  --searchresults-li-bg: rgba(143, 188, 187, 0.12);
+  --table-border-color: rgba(129, 161, 193, 0.34);
+  --table-header-bg: rgba(94, 129, 172, 0.32);
+  --table-alternate-bg: rgba(67, 76, 94, 0.42);
+  --searchbar-border-color: #5f6d86;
+  --searchbar-bg: #36445b;
+  --searchbar-fg: #eceff4;
+  --searchbar-shadow-color: rgba(136, 192, 208, 0.32);
+  --searchresults-header-fg: #c2cada;
+  --searchresults-border-color: rgba(129, 161, 193, 0.42);
+  --searchresults-li-bg: rgba(136, 192, 208, 0.12);
   --search-mark-bg: rgba(163, 190, 140, 0.38);
   --footnote-highlight: rgba(136, 192, 208, 0.42);
-  --overlay-bg: rgba(8, 13, 26, 0.7);
+  --overlay-bg: rgba(25, 33, 48, 0.6);
   --blockquote-note-color: #88c0d0;
   --blockquote-tip-color: #a3be8c;
   --blockquote-important-color: #b48ead;
@@ -58,9 +58,9 @@ html {
 
 body {
   background:
-    radial-gradient(circle at 12% -10%, rgba(94, 129, 172, 0.28), transparent 40%),
-    radial-gradient(circle at 86% -8%, rgba(136, 192, 208, 0.18), transparent 40%),
-    linear-gradient(180deg, #0a1020 0%, #0b1324 48%, #0a1221 100%);
+    radial-gradient(circle at 14% -12%, rgba(94, 129, 172, 0.23), transparent 44%),
+    radial-gradient(circle at 84% -8%, rgba(136, 192, 208, 0.16), transparent 42%),
+    linear-gradient(180deg, #2f3b52 0%, #2b364a 52%, #293448 100%);
 }
 
 .page-wrapper {
@@ -68,10 +68,10 @@ body {
 }
 
 #mdbook-menu-bar {
-  border-block-end-color: rgba(129, 161, 193, 0.26);
-  background: linear-gradient(180deg, rgba(17, 29, 54, 0.88) 0%, rgba(10, 17, 33, 0.82) 100%);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 10px 28px rgba(2, 5, 13, 0.3);
+  border-block-end-color: rgba(129, 161, 193, 0.32);
+  background: linear-gradient(180deg, rgba(53, 65, 87, 0.9) 0%, rgba(47, 58, 79, 0.88) 100%);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(31, 41, 58, 0.2);
 }
 
 .menu-title {
@@ -82,8 +82,8 @@ body {
 }
 
 .sidebar {
-  border-inline-end: 1px solid rgba(94, 129, 172, 0.32);
-  background: linear-gradient(180deg, #101a33 0%, #0e182f 100%);
+  border-inline-end: 1px solid rgba(129, 161, 193, 0.3);
+  background: linear-gradient(180deg, #334056 0%, #303c52 100%);
 }
 
 .sidebar .sidebar-scrollbox {
@@ -130,20 +130,20 @@ body {
   max-width: min(var(--content-max-width), 100%);
   margin-block-start: 16px;
   padding: clamp(20px, 2.4vw, 36px);
-  border: 1px solid rgba(129, 161, 193, 0.24);
+  border: 1px solid rgba(129, 161, 193, 0.26);
   border-radius: 18px;
   background:
-    linear-gradient(165deg, rgba(23, 34, 58, 0.86) 0%, rgba(11, 18, 34, 0.92) 100%);
+    linear-gradient(165deg, rgba(65, 79, 105, 0.8) 0%, rgba(54, 67, 90, 0.84) 100%);
   box-shadow:
-    0 22px 46px rgba(2, 7, 17, 0.42),
-    inset 0 1px 0 rgba(236, 239, 244, 0.06);
+    0 10px 26px rgba(29, 38, 54, 0.2),
+    inset 0 1px 0 rgba(236, 239, 244, 0.08);
 }
 
 .content h1,
 .content h2,
 .content h3,
 .content h4 {
-  color: #e8eef8;
+  color: #eceff4;
   letter-spacing: 0.01em;
 }
 
@@ -202,22 +202,34 @@ table th {
 
 :not(pre) > code,
 :not(pre) > .hljs {
-  border: 1px solid rgba(136, 192, 208, 0.28);
+  border: 1px solid rgba(143, 188, 187, 0.34);
   border-radius: 7px;
-  background: rgba(17, 30, 54, 0.55);
-  color: #8fbcbb;
+  background: rgba(59, 73, 98, 0.56);
+  color: #d8dee9;
   padding: 0.15em 0.44em;
 }
 
 pre {
   margin: 1.45em 0;
-  border: 1px solid rgba(129, 161, 193, 0.27);
+  border: 1px solid rgba(129, 161, 193, 0.42);
   border-radius: 15px;
   background:
-    linear-gradient(160deg, rgba(16, 26, 50, 0.96) 0%, rgba(8, 14, 28, 0.98) 100%);
+    linear-gradient(165deg, rgba(52, 64, 87, 0.96) 0%, rgba(46, 57, 78, 0.98) 100%);
   box-shadow:
-    0 12px 28px rgba(3, 8, 18, 0.34),
-    inset 0 1px 0 rgba(236, 239, 244, 0.04);
+    0 8px 18px rgba(29, 39, 55, 0.22),
+    inset 0 1px 0 rgba(236, 239, 244, 0.08);
+}
+
+pre::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 15px 15px 0 0;
+  background: linear-gradient(90deg, #88c0d0 0%, #81a1c1 48%, #5e81ac 100%);
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 pre > code,
@@ -231,26 +243,26 @@ pre > .buttons {
 }
 
 pre > .buttons button {
-  border-color: rgba(129, 161, 193, 0.45);
+  border-color: rgba(143, 188, 187, 0.45);
   border-radius: 8px;
-  background-color: rgba(15, 26, 49, 0.9);
-  color: #d8dee9;
+  background-color: rgba(57, 71, 96, 0.9);
+  color: #eceff4;
 }
 
 pre > .buttons :hover {
   color: #eceff4;
   border-color: #88c0d0;
-  background-color: rgba(94, 129, 172, 0.28);
+  background-color: rgba(94, 129, 172, 0.36);
 }
 
 .hljs {
   background: transparent !important;
-  color: #d8dee9;
+  color: #eceff4;
 }
 
 .hljs-comment,
 .hljs-quote {
-  color: #7289ad;
+  color: #7f8fa8;
   font-style: italic;
 }
 
@@ -289,7 +301,7 @@ pre > .buttons :hover {
 .hljs-tag,
 .hljs-regexp,
 .hljs-link {
-  color: #cf727b;
+  color: #c9858d;
 }
 
 .hljs-built_in,
