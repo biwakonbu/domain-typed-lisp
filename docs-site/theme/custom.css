@@ -11,32 +11,32 @@
 .navy,
 .ayu,
 html:not(.js) {
-  --bg: #2c3648;
-  --fg: #e5e9f0;
-  --sidebar-bg: #313d53;
+  --bg: #3a475f;
+  --fg: #eceff4;
+  --sidebar-bg: #42506a;
   --sidebar-fg: #d8dee9;
-  --sidebar-non-existant: #7d8aa2;
+  --sidebar-non-existant: #9aa7bc;
   --sidebar-active: #88c0d0;
-  --sidebar-spacer: #434c5e;
+  --sidebar-spacer: #5a667f;
   --scrollbar: #5e81ac;
-  --icons: #9aabc2;
+  --icons: #b0bdd0;
   --icons-hover: #eceff4;
   --links: #8fbcbb;
   --inline-code-color: #8fbcbb;
-  --theme-popup-bg: #3a465c;
-  --theme-popup-border: #5c6a84;
-  --theme-hover: #45536d;
-  --quote-bg: rgba(143, 188, 187, 0.1);
-  --quote-border: rgba(143, 188, 187, 0.32);
+  --theme-popup-bg: #4a5872;
+  --theme-popup-border: #6e7d99;
+  --theme-hover: #556583;
+  --quote-bg: rgba(143, 188, 187, 0.14);
+  --quote-border: rgba(143, 188, 187, 0.34);
   --warning-border: #d08770;
-  --table-border-color: rgba(129, 161, 193, 0.34);
-  --table-header-bg: rgba(94, 129, 172, 0.32);
-  --table-alternate-bg: rgba(67, 76, 94, 0.42);
-  --searchbar-border-color: #5f6d86;
-  --searchbar-bg: #36445b;
+  --table-border-color: rgba(129, 161, 193, 0.36);
+  --table-header-bg: rgba(94, 129, 172, 0.36);
+  --table-alternate-bg: rgba(86, 101, 126, 0.35);
+  --searchbar-border-color: #7888a3;
+  --searchbar-bg: #4b5a75;
   --searchbar-fg: #eceff4;
   --searchbar-shadow-color: rgba(136, 192, 208, 0.32);
-  --searchresults-header-fg: #c2cada;
+  --searchresults-header-fg: #d5dce8;
   --searchresults-border-color: rgba(129, 161, 193, 0.42);
   --searchresults-li-bg: rgba(136, 192, 208, 0.12);
   --search-mark-bg: rgba(163, 190, 140, 0.38);
@@ -57,7 +57,7 @@ html {
 }
 
 body {
-  background: #2c3648;
+  background: #3a475f;
 }
 
 .page-wrapper {
@@ -66,9 +66,9 @@ body {
 
 #mdbook-menu-bar {
   border-block-end-color: rgba(129, 161, 193, 0.32);
-  background-color: #3a465d;
+  background-color: #4a5873;
   backdrop-filter: blur(8px);
-  box-shadow: 0 6px 18px rgba(31, 41, 58, 0.2);
+  box-shadow: 0 6px 16px rgba(36, 45, 63, 0.16);
 }
 
 .menu-title {
@@ -80,7 +80,7 @@ body {
 
 .sidebar {
   border-inline-end: 1px solid rgba(129, 161, 193, 0.3);
-  background-color: #344158;
+  background-color: #44526c;
 }
 
 .sidebar .sidebar-scrollbox {
@@ -129,9 +129,9 @@ body {
   padding: clamp(20px, 2.4vw, 36px);
   border: 1px solid rgba(129, 161, 193, 0.26);
   border-radius: 18px;
-  background-color: rgba(60, 74, 99, 0.88);
+  background-color: rgba(82, 98, 127, 0.82);
   box-shadow:
-    0 10px 26px rgba(29, 38, 54, 0.2),
+    0 8px 18px rgba(36, 45, 62, 0.14),
     inset 0 1px 0 rgba(236, 239, 244, 0.08);
 }
 
@@ -200,19 +200,19 @@ table th {
 :not(pre) > .hljs {
   border: 1px solid rgba(143, 188, 187, 0.34);
   border-radius: 7px;
-  background: rgba(59, 73, 98, 0.56);
+  background: rgba(68, 82, 108, 0.55);
   color: #d8dee9;
   padding: 0.15em 0.44em;
 }
 
 pre {
   margin: 1.45em 0;
-  border: 1px solid rgba(129, 161, 193, 0.42);
+  border: 1px solid rgba(129, 161, 193, 0.5);
   border-radius: 15px;
-  background-color: rgba(50, 62, 84, 0.96);
+  background-color: rgba(40, 49, 67, 0.97);
   box-shadow:
-    0 8px 18px rgba(29, 39, 55, 0.22),
-    inset 0 1px 0 rgba(236, 239, 244, 0.08);
+    0 8px 16px rgba(26, 34, 48, 0.24),
+    inset 0 1px 0 rgba(236, 239, 244, 0.06);
 }
 
 pre::before {
@@ -240,7 +240,7 @@ pre > .buttons {
 pre > .buttons button {
   border-color: rgba(143, 188, 187, 0.45);
   border-radius: 8px;
-  background-color: rgba(57, 71, 96, 0.9);
+  background-color: rgba(52, 64, 87, 0.9);
   color: #eceff4;
 }
 
