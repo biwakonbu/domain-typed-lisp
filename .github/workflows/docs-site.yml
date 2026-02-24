@@ -7,6 +7,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "scripts/generate-examples-catalog.sh"
+      - "scripts/generate-glossary-assets.py"
       - "README.md"
       - ".github/workflows/docs-site.yml"
   push:
@@ -17,6 +18,7 @@ on:
       - "docs/**"
       - "examples/**"
       - "scripts/generate-examples-catalog.sh"
+      - "scripts/generate-glossary-assets.py"
       - "README.md"
       - ".github/workflows/docs-site.yml"
   workflow_dispatch:
@@ -37,8 +39,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: generate examples catalog
         run: ./scripts/generate-examples-catalog.sh
+      - name: generate glossary assets
+        run: python3 scripts/generate-glossary-assets.py
       - name: verify generated catalog is committed
-        run: git diff --exit-code docs-site/src/tutorial/examples-catalog.md
+        run: git diff --exit-code docs-site/src/tutorial/examples-catalog.md docs-site/src/reference/glossary.md docs-site/theme/dtl-terms.js
+      - name: verify generated glossary assets are up to date
+        run: python3 scripts/generate-glossary-assets.py --check
       - uses: taiki-e/install-action@mdbook
       - name: build docs site
         run: mdbook build docs-site

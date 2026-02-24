@@ -56,6 +56,9 @@ cargo install mdbook --locked
 # examples から利用例カタログを自動生成
 ./scripts/generate-examples-catalog.sh
 
+# 用語台帳から用語集/ツールチップ資産を生成
+python3 ./scripts/generate-glossary-assets.py
+
 # HTML を生成
 ./scripts/docs-site-build.sh
 
@@ -65,7 +68,9 @@ cargo install mdbook --locked
 
 - 設定: `docs-site/book.toml`
 - 利用例定義: `examples/catalog.tsv`（`[first]` などのセクション見出し + TSV 行）
+- 用語定義: `docs-site/src/reference/glossary-terms.json`
 - 目次: `docs-site/src/SUMMARY.md`
+- ツールチップ資産: `docs-site/theme/dtl-terms.js`
 - 生成物: `docs-site/book/index.html`
 - GitHub Pages 運用: `.github/workflows/docs-site.yml`
 

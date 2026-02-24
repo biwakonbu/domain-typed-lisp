@@ -9,6 +9,12 @@ if ! command -v mdbook >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 が見つかりません。" >&2
+  exit 1
+fi
+
 "$SCRIPT_DIR/generate-examples-catalog.sh"
+python3 "$SCRIPT_DIR/generate-glossary-assets.py"
 mdbook build "$REPO_ROOT/docs-site"
 echo "生成完了: $REPO_ROOT/docs-site/book/index.html"

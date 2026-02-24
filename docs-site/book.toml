@@ -11,7 +11,7 @@ preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/biwakonbu/domain-typed-lisp"
 site-url = "/domain-typed-lisp/"
 additional-css = ["theme/custom.css"]
-additional-js = ["theme/dtl-highlight.js"]
+additional-js = ["theme/dtl-highlight.js", "theme/dtl-terms.js"]
 
 [output.html.fold]
 enable = true

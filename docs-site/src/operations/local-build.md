@@ -15,6 +15,7 @@ cargo install mdbook --locked
 ```bash
 # 利用例定義（examples/catalog.tsv）を更新後に再生成
 ./scripts/generate-examples-catalog.sh
+python3 ./scripts/generate-glossary-assets.py
 
 mdbook build docs-site
 ```
@@ -23,6 +24,8 @@ mdbook build docs-site
 
 - `docs-site/book/index.html`
 - `docs-site/src/tutorial/examples-catalog.md`（自動生成）
+- `docs-site/src/reference/glossary.md`（自動生成）
+- `docs-site/theme/dtl-terms.js`（自動生成）
 
 ## ローカル確認
 

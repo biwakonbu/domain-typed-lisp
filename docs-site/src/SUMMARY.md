@@ -10,6 +10,7 @@
 - [リファレンス](./reference/index.md)
   - [CLI リファレンス](./reference/cli.md)
   - [Lint/エラーコード](./reference/codes.md)
+  - [用語集](./reference/glossary.md)
   - [JSON 契約リファレンス](./reference/json-contracts.md)
   - [言語仕様（完全版）](./reference/language-spec.md)
   - [言語ガイド（完全版）](./reference/language-guide.md)
