@@ -11,16 +11,16 @@
 .navy,
 .ayu,
 html:not(.js) {
-  --bg: #3a475f;
-  --fg: #eceff4;
-  --sidebar-bg: #42506a;
+  --bg: #36445c;
+  --fg: #e5e9f0;
+  --sidebar-bg: #3f4d66;
   --sidebar-fg: #d8dee9;
   --sidebar-non-existant: #9aa7bc;
   --sidebar-active: #88c0d0;
   --sidebar-spacer: #5a667f;
   --scrollbar: #5e81ac;
   --icons: #b0bdd0;
-  --icons-hover: #eceff4;
+  --icons-hover: #e5e9f0;
   --links: #8fbcbb;
   --inline-code-color: #8fbcbb;
   --theme-popup-bg: #4a5872;
@@ -34,7 +34,7 @@ html:not(.js) {
   --table-alternate-bg: rgba(86, 101, 126, 0.35);
   --searchbar-border-color: #7888a3;
   --searchbar-bg: #4b5a75;
-  --searchbar-fg: #eceff4;
+  --searchbar-fg: #e5e9f0;
   --searchbar-shadow-color: rgba(136, 192, 208, 0.32);
   --searchresults-header-fg: #d5dce8;
   --searchresults-border-color: rgba(129, 161, 193, 0.42);
@@ -57,7 +57,7 @@ html {
 }
 
 body {
-  background: #3a475f;
+  background: #36445c;
 }
 
 .page-wrapper {
@@ -66,7 +66,7 @@ body {
 
 #mdbook-menu-bar {
   border-block-end-color: rgba(129, 161, 193, 0.32);
-  background-color: #4a5873;
+  background-color: #46546e;
   backdrop-filter: blur(8px);
   box-shadow: 0 6px 16px rgba(36, 45, 63, 0.16);
 }
@@ -75,12 +75,12 @@ body {
   font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", "Open Sans", sans-serif;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: #e6edf7;
+  color: #dfe6f1;
 }
 
 .sidebar {
   border-inline-end: 1px solid rgba(129, 161, 193, 0.3);
-  background-color: #44526c;
+  background-color: #40506a;
 }
 
 .sidebar .sidebar-scrollbox {
@@ -105,7 +105,7 @@ body {
 
 .chapter li a.active,
 .chapter a.current-header {
-  color: #e6edf7;
+  color: #dfe6f1;
   background-color: rgba(136, 192, 208, 0.2);
 }
 
@@ -129,7 +129,7 @@ body {
   padding: clamp(20px, 2.4vw, 36px);
   border: 1px solid rgba(129, 161, 193, 0.26);
   border-radius: 18px;
-  background-color: rgba(82, 98, 127, 0.82);
+  background-color: rgba(74, 90, 117, 0.84);
   box-shadow:
     0 8px 18px rgba(36, 45, 62, 0.14),
     inset 0 1px 0 rgba(236, 239, 244, 0.08);
@@ -139,7 +139,7 @@ body {
 .content h2,
 .content h3,
 .content h4 {
-  color: #eceff4;
+  color: #e5e9f0;
   letter-spacing: 0.01em;
 }
 
@@ -241,18 +241,18 @@ pre > .buttons button {
   border-color: rgba(143, 188, 187, 0.45);
   border-radius: 8px;
   background-color: rgba(52, 64, 87, 0.9);
-  color: #eceff4;
+  color: #e5e9f0;
 }
 
 pre > .buttons :hover {
-  color: #eceff4;
+  color: #e5e9f0;
   border-color: #88c0d0;
   background-color: rgba(94, 129, 172, 0.36);
 }
 
 .hljs {
   background: transparent !important;
-  color: #eceff4;
+  color: #d8dee9;
 }
 
 .hljs-comment,
