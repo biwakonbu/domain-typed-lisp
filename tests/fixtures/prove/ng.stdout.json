@@ -1,12 +1,16 @@
 {
   "status": "error",
   "proof": {
-    "schema_version": "2.0.0",
+    "schema_version": "2.1.0",
     "profile": "standard",
     "summary": {
       "total": 1,
       "proved": 0,
       "failed": 1
+    },
+    "claim_coverage": {
+      "total_claims": 1,
+      "proved_claims": 0
     },
     "obligations": [
       {

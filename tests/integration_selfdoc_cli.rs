@@ -13,12 +13,17 @@ fn write_base_repo(dir: &std::path::Path) {
 
 sample repository
 
-dtl check
-dtl prove
-dtl doc
-dtl lint
-dtl fmt
-dtl selfdoc
+<!-- selfdoc:cli-contracts:start -->
+| subcommand | impl_path |
+| --- | --- |
+| check | src/main.rs |
+| prove | src/main.rs |
+| doc | src/main.rs |
+| lint | src/main.rs |
+| fmt | src/main.rs |
+| selfdoc | src/main.rs |
+| selfcheck | src/main.rs |
+<!-- selfdoc:cli-contracts:end -->
 "#,
     )
     .expect("write readme");
@@ -122,8 +127,10 @@ fn selfdoc_generates_bundle_and_intermediate_dsl() {
     let trace: Value =
         serde_json::from_slice(&fs::read(out.join("proof-trace.json")).expect("read proof trace"))
             .expect("valid proof trace");
-    assert_eq!(trace["schema_version"], "2.0.0");
+    assert_eq!(trace["schema_version"], "2.1.0");
     assert_eq!(trace["profile"], "selfdoc");
+    assert_eq!(trace["claim_coverage"]["total_claims"], 7);
+    assert_eq!(trace["claim_coverage"]["proved_claims"], 7);
 
     let index: Value =
         serde_json::from_slice(&fs::read(out.join("doc-index.json")).expect("read index"))
@@ -131,6 +138,42 @@ fn selfdoc_generates_bundle_and_intermediate_dsl() {
     assert_eq!(index["schema_version"], "2.0.0");
     assert_eq!(index["profile"], "selfdoc");
     assert_eq!(index["intermediate"]["dsl"], "selfdoc.generated.dtl");
+}
+
+#[test]
+fn selfdoc_rejects_plain_cli_strings_without_structured_contract_table() {
+    let dir = tempdir().expect("tempdir");
+    write_base_repo(dir.path());
+    fs::write(
+        dir.path().join("README.md"),
+        r#"# sample
+
+dtl check
+dtl prove
+dtl doc
+dtl lint
+dtl fmt
+dtl selfdoc
+dtl selfcheck
+"#,
+    )
+    .expect("rewrite readme");
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("selfdoc")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .failure()
+        .get_output()
+        .clone();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("E-SELFDOC-CONTRACT"));
 }
 
 #[test]
@@ -170,14 +213,22 @@ patterns = [".dtl-selfdoc.toml"]
 
     let out = dir.path().join("out");
     let mut cmd = cargo_bin_cmd!("dtl");
-    cmd.arg("selfdoc")
+    let output = cmd
+        .arg("selfdoc")
         .arg("--repo")
         .arg(dir.path())
         .arg("--out")
         .arg(&out)
         .assert()
-        .failure();
+        .failure()
+        .get_output()
+        .clone();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("E-SELFDOC-REF"));
+    assert!(stderr.contains("missing.dtl"));
 
     assert!(!out.join("spec.json").exists());
     assert!(!out.join("spec.md").exists());
+    assert!(!out.join("selfdoc.generated.dtl").exists());
 }

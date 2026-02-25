@@ -265,7 +265,7 @@ fn cli_doc_generates_bundle_for_japanese_example() {
         &fs::read(out.join("proof-trace.json")).expect("read japanese proof trace"),
     )
     .expect("valid japanese proof trace");
-    assert_eq!(trace["schema_version"], "2.0.0");
+    assert_eq!(trace["schema_version"], "2.1.0");
     assert_eq!(trace["profile"], "standard");
     assert!(
         trace["obligations"]
