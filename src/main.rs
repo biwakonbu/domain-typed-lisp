@@ -7,8 +7,8 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dtl::{
     Diagnostic, DocBundleFormat, DocBundleOptions, FormatOptions, LintDiagnostic, LintOptions,
     Program, ProofTrace, Span, check_program, format_source, generate_doc_bundle_with_options,
-    has_failed_obligation, lint_program, parse_program_with_source, prove_program,
-    write_proof_trace,
+    has_failed_obligation, has_full_claim_coverage, lint_program, parse_program_with_source,
+    prove_program, write_proof_trace,
 };
 use serde::Serialize;
 
@@ -75,6 +75,20 @@ enum Command {
         out: PathBuf,
         #[arg(long, value_enum, default_value_t = DocFormat::Markdown)]
         format: DocFormat,
+        #[arg(long, default_value_t = false)]
+        pdf: bool,
+    },
+    Selfcheck {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+        #[arg(long, value_enum, default_value_t = DocFormat::Json)]
+        doc_format: DocFormat,
         #[arg(long, default_value_t = false)]
         pdf: bool,
     },
@@ -190,6 +204,14 @@ fn main() {
             format,
             pdf,
         } => run_selfdoc(&repo, config.as_deref(), &out, format, pdf),
+        Command::Selfcheck {
+            repo,
+            config,
+            out,
+            format,
+            doc_format,
+            pdf,
+        } => run_selfcheck(&repo, config.as_deref(), &out, format, doc_format, pdf),
     };
     std::process::exit(exit_code);
 }
@@ -391,6 +413,7 @@ fn run_selfdoc(
         }
     };
     trace.profile = "selfdoc".to_string();
+    trace.claim_coverage = prepared.claim_coverage;
 
     let options = DocBundleOptions {
         profile: Some("selfdoc".to_string()),
@@ -425,6 +448,235 @@ fn run_selfdoc(
     }
 
     println!("ok");
+    0
+}
+
+fn run_selfcheck(
+    repo: &Path,
+    config: Option<&Path>,
+    out: &Path,
+    format: OutputFormat,
+    doc_format: DocFormat,
+    pdf: bool,
+) -> i32 {
+    let subcommands = Cli::command()
+        .get_subcommands()
+        .map(|cmd| cmd.get_name().to_string())
+        .collect::<Vec<_>>();
+
+    let prepared = match selfdoc::prepare_selfdoc(repo, config, out, &subcommands) {
+        Ok(prepared) => prepared,
+        Err(selfdoc::PrepareError::MissingConfig { path, template }) => {
+            let diag = Diagnostic::new(
+                "E-SELFDOC-CONFIG",
+                format!("設定ファイルが見つかりません: {}", path.display()),
+                None,
+            )
+            .with_source(path.display().to_string());
+            match format {
+                OutputFormat::Text => {
+                    eprintln!("{diag}");
+                    eprintln!("以下を {} に保存してください:", path.display());
+                    eprintln!("{template}");
+                }
+                OutputFormat::Json => {
+                    emit_json(ProveJsonResponse {
+                        status: "error",
+                        proof: None,
+                        diagnostics: vec![as_json_diagnostic(&diag)],
+                    });
+                }
+            }
+            return 2;
+        }
+        Err(selfdoc::PrepareError::Diagnostics(diags)) => {
+            match format {
+                OutputFormat::Text => {
+                    for diag in &diags {
+                        eprintln!("{diag}");
+                    }
+                }
+                OutputFormat::Json => {
+                    emit_json(ProveJsonResponse {
+                        status: "error",
+                        proof: None,
+                        diagnostics: diags.iter().map(as_json_diagnostic).collect(),
+                    });
+                }
+            }
+            return 1;
+        }
+    };
+
+    let files = vec![prepared.generated_file.clone()];
+    let program = match load_program(&files) {
+        Ok(program) => program,
+        Err(diags) => {
+            match format {
+                OutputFormat::Text => {
+                    for d in &diags {
+                        eprintln!("{d}");
+                    }
+                }
+                OutputFormat::Json => {
+                    emit_json(ProveJsonResponse {
+                        status: "error",
+                        proof: None,
+                        diagnostics: diags.iter().map(as_json_diagnostic).collect(),
+                    });
+                }
+            }
+            return 1;
+        }
+    };
+
+    let mut trace = match prove_program(&program) {
+        Ok(trace) => trace,
+        Err(diags) => {
+            let diags = attach_source_if_missing(diags, &files);
+            match format {
+                OutputFormat::Text => {
+                    for d in &diags {
+                        eprintln!("{d}");
+                    }
+                }
+                OutputFormat::Json => {
+                    emit_json(ProveJsonResponse {
+                        status: "error",
+                        proof: None,
+                        diagnostics: diags.iter().map(as_json_diagnostic).collect(),
+                    });
+                }
+            }
+            return 1;
+        }
+    };
+    trace.profile = "selfdoc".to_string();
+    trace.claim_coverage = prepared.claim_coverage;
+
+    if let Err(err) = fs::create_dir_all(out) {
+        let diag = Diagnostic::new(
+            "E-IO",
+            format!("failed to create output directory {}: {err}", out.display()),
+            None,
+        );
+        match format {
+            OutputFormat::Text => eprintln!("{diag}"),
+            OutputFormat::Json => {
+                emit_json(ProveJsonResponse {
+                    status: "error",
+                    proof: Some(trace),
+                    diagnostics: vec![as_json_diagnostic(&diag)],
+                });
+            }
+        }
+        return 1;
+    }
+    if let Err(diag) = write_proof_trace(&out.join("proof-trace.json"), &trace) {
+        match format {
+            OutputFormat::Text => eprintln!("{diag}"),
+            OutputFormat::Json => {
+                emit_json(ProveJsonResponse {
+                    status: "error",
+                    proof: Some(trace),
+                    diagnostics: vec![as_json_diagnostic(&diag)],
+                });
+            }
+        }
+        return 1;
+    }
+
+    let has_failed = has_failed_obligation(&trace);
+    let has_full_coverage =
+        has_full_claim_coverage(&trace) && trace.claim_coverage.total_claims > 0;
+    if has_failed || !has_full_coverage {
+        let mut diagnostics = Vec::new();
+        if !has_full_coverage {
+            diagnostics.push(Diagnostic::new(
+                "E-SELFCHECK",
+                format!(
+                    "claim coverage が不足しています: {}/{}",
+                    trace.claim_coverage.proved_claims, trace.claim_coverage.total_claims
+                ),
+                None,
+            ));
+        }
+        match format {
+            OutputFormat::Text => {
+                if has_failed {
+                    eprintln!("selfcheck proof failed");
+                    for obligation in &trace.obligations {
+                        if obligation.result != "proved" {
+                            eprintln!("- {}", obligation.id);
+                        }
+                    }
+                }
+                for diag in diagnostics {
+                    eprintln!("{diag}");
+                }
+            }
+            OutputFormat::Json => {
+                emit_json(ProveJsonResponse {
+                    status: "error",
+                    proof: Some(trace),
+                    diagnostics: diagnostics.iter().map(as_json_diagnostic).collect(),
+                });
+            }
+        }
+        return 1;
+    }
+
+    let options = DocBundleOptions {
+        profile: Some("selfdoc".to_string()),
+        self_description: Some(prepared.self_description),
+        intermediate_dsl: Some(prepared.generated_relative),
+    };
+    if let Err(diags) = generate_doc_bundle_with_options(
+        &program,
+        &trace,
+        out,
+        as_doc_bundle_format(doc_format),
+        options,
+    ) {
+        match format {
+            OutputFormat::Text => {
+                for d in &diags {
+                    eprintln!("{d}");
+                }
+            }
+            OutputFormat::Json => {
+                emit_json(ProveJsonResponse {
+                    status: "error",
+                    proof: Some(trace),
+                    diagnostics: diags.iter().map(as_json_diagnostic).collect(),
+                });
+            }
+        }
+        return 1;
+    }
+
+    if pdf {
+        if doc_format == DocFormat::Markdown {
+            if let Err(message) = try_generate_pdf(out) {
+                eprintln!("warning: {message}");
+            }
+        } else {
+            let message = "JSON 形式では PDF 生成をスキップしました".to_string();
+            let _ = update_doc_index_pdf(out, true, false, Some(message.clone()));
+            eprintln!("warning: {message}");
+        }
+    } else {
+        let _ = update_doc_index_pdf(out, false, false, None);
+    }
+
+    match format {
+        OutputFormat::Text => println!("ok"),
+        OutputFormat::Json => emit_json(ProveJsonResponse {
+            status: "ok",
+            proof: Some(trace),
+            diagnostics: Vec::new(),
+        }),
+    }
     0
 }
 

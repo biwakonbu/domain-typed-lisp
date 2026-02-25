@@ -19,9 +19,10 @@ pub use lint::{LintDiagnostic, LintOptions, LintSeverity, lint_program};
 pub use logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, solve_facts};
 pub use parser::{parse_program, parse_program_with_source};
 pub use prover::{
-    DOC_SPEC_SCHEMA_VERSION, DocBundleFormat, DocBundleOptions, DocContract, DocModule, DocProject,
-    DocQualityGate, DocReference, DocSelfDescription, PROOF_TRACE_SCHEMA_VERSION, ProofSummary,
-    ProofTrace, generate_doc_bundle, generate_doc_bundle_with_options, has_failed_obligation,
+    ClaimCoverage, DOC_SPEC_SCHEMA_VERSION, DocBundleFormat, DocBundleOptions, DocContract,
+    DocModule, DocProject, DocQualityGate, DocReference, DocSelfDescription,
+    PROOF_TRACE_SCHEMA_VERSION, ProofSummary, ProofTrace, generate_doc_bundle,
+    generate_doc_bundle_with_options, has_failed_obligation, has_full_claim_coverage,
     prove_program, write_proof_trace,
 };
 pub use typecheck::{TypeReport, check_program};

@@ -116,10 +116,13 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
             Some("各ファイルが classify ルールにちょうど1つ一致するように調整してください。")
         }
         "E-SELFDOC-REF" => Some("抽出したローカル参照先パスが存在するか確認してください。"),
-        "E-SELFDOC-CONTRACT" => {
-            Some("README.md または language-spec に `dtl <subcommand>` を記述してください。")
-        }
+        "E-SELFDOC-CONTRACT" => Some(
+            "README.md または language-spec に selfdoc 契約テーブル（`<!-- selfdoc:cli-contracts:start -->`）を定義してください。",
+        ),
         "E-SELFDOC-GATE" => Some("workflow YAML の jobs/steps/run 記述を確認してください。"),
+        "E-SELFCHECK" => {
+            Some("selfcheck の claim_coverage が 100% になるよう契約テーブルを補完してください。")
+        }
         _ => None,
     }
 }

@@ -1292,7 +1292,7 @@ fn as_list_items<'a>(
 
 fn sexpr_to_string(node: &SExpr) -> String {
     match node {
-        SExpr::Atom(a, _, _) => a.clone(),
+        SExpr::Atom(a, _, _) => render_atom(a),
         SExpr::List(items, _, _) => {
             let inner = items
                 .iter()
@@ -1302,6 +1302,28 @@ fn sexpr_to_string(node: &SExpr) -> String {
             format!("({inner})")
         }
     }
+}
+
+fn render_atom(atom: &str) -> String {
+    let needs_quote = atom.is_empty()
+        || atom.chars().any(|ch| {
+            ch.is_whitespace() || matches!(ch, '(' | ')' | ';' | '"' | '\\' | '\n' | '\r' | '\t')
+        });
+    if !needs_quote {
+        return atom.to_string();
+    }
+    let mut escaped = String::new();
+    for ch in atom.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\t' => escaped.push_str("\\t"),
+            '\r' => escaped.push_str("\\r"),
+            _ => escaped.push(ch),
+        }
+    }
+    format!("\"{escaped}\"")
 }
 
 fn is_tag_atom(node: &SExpr) -> bool {

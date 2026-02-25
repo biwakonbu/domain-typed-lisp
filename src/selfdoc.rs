@@ -1,9 +1,9 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use dtl::{
-    Diagnostic, DocContract, DocModule, DocProject, DocQualityGate, DocReference,
+    ClaimCoverage, Diagnostic, DocContract, DocModule, DocProject, DocQualityGate, DocReference,
     DocSelfDescription,
 };
 use globset::{Glob, GlobSet, GlobSetBuilder};
@@ -80,6 +80,7 @@ pub struct PreparedSelfdoc {
     pub generated_file: PathBuf,
     pub generated_relative: String,
     pub self_description: DocSelfDescription,
+    pub claim_coverage: ClaimCoverage,
 }
 
 #[derive(Debug)]
@@ -395,6 +396,10 @@ pub fn prepare_selfdoc(
                     required: g.required,
                 })
                 .collect(),
+        },
+        claim_coverage: ClaimCoverage {
+            total_claims: cli_contracts.total_claims,
+            proved_claims: cli_contracts.proved_claims,
         },
     })
 }
@@ -855,43 +860,221 @@ fn normalize_path_relative(path: &Path) -> Option<String> {
 struct CliContractExtraction {
     contracts: Vec<SelfdocContract>,
     errors: Vec<Diagnostic>,
+    total_claims: usize,
+    proved_claims: usize,
 }
 
 fn extract_cli_contracts(repo: &Path, subcommands: &[String]) -> CliContractExtraction {
-    let mut contracts = Vec::new();
+    const START_MARKER: &str = "<!-- selfdoc:cli-contracts:start -->";
+    const END_MARKER: &str = "<!-- selfdoc:cli-contracts:end -->";
+
+    let expected = subcommands.iter().cloned().collect::<BTreeSet<_>>();
+    let mut contracts_by_subcommand: BTreeMap<String, SelfdocContract> = BTreeMap::new();
     let mut errors = Vec::new();
+    let mut table_found = false;
+    let mut docs_without_table = Vec::new();
 
-    let readme = fs::read_to_string(repo.join("README.md")).unwrap_or_default();
-    let language_spec = fs::read_to_string(repo.join("docs/language-spec.md")).unwrap_or_default();
+    let docs = vec![
+        (
+            "README.md",
+            fs::read_to_string(repo.join("README.md")).unwrap_or_default(),
+        ),
+        (
+            "docs/language-spec.md",
+            fs::read_to_string(repo.join("docs/language-spec.md")).unwrap_or_default(),
+        ),
+    ];
 
-    for name in subcommands {
-        let pattern = format!("dtl {name}");
-        let mut source = None;
-        if readme.contains(&pattern) {
-            source = Some("README.md");
-        } else if language_spec.contains(&pattern) {
-            source = Some("docs/language-spec.md");
-        }
-
-        let Some(source) = source else {
-            errors.push(diag(
-                "E-SELFDOC-CONTRACT",
-                format!("CLI 契約の文書記述が見つかりません: {pattern}"),
-                None,
-            ));
+    for (source, body) in docs {
+        let section = extract_tagged_section(&body, START_MARKER, END_MARKER);
+        if let Some(section) = section {
+            table_found = true;
+            let parsed = parse_contract_table(section, source, &expected);
+            errors.extend(parsed.errors);
+            for (subcommand, impl_path) in parsed.entries {
+                let key = subcommand.clone();
+                let contract = SelfdocContract {
+                    name: format!("cli::{subcommand}"),
+                    source: source.to_string(),
+                    path: impl_path,
+                };
+                if let Some(prev) = contracts_by_subcommand.insert(key.clone(), contract) {
+                    if prev.source != source {
+                        errors.push(diag(
+                            "E-SELFDOC-CONTRACT",
+                            format!(
+                                "CLI 契約が複数文書で重複しています: cli::{key} ({}, {})",
+                                prev.source, source
+                            ),
+                            Some(source.to_string()),
+                        ));
+                    }
+                }
+            }
             continue;
-        };
-
-        contracts.push(SelfdocContract {
-            name: format!("cli::{name}"),
-            source: source.to_string(),
-            path: "src/main.rs".to_string(),
-        });
+        }
+        docs_without_table.push((source, body));
     }
 
-    contracts.sort_by(|a, b| a.name.cmp(&b.name));
-    contracts.dedup_by(|a, b| a.name == b.name);
-    CliContractExtraction { contracts, errors }
+    if !table_found {
+        for (source, body) in docs_without_table {
+            for name in &expected {
+                let pattern = format!("dtl {name}");
+                if body.contains(&pattern) {
+                    errors.push(diag(
+                        "E-SELFDOC-CONTRACT",
+                        format!(
+                            "構造化契約テーブルなしで CLI 文字列を検出しました: `{pattern}` (`{source}`)"
+                        ),
+                        Some(source.to_string()),
+                    ));
+                }
+            }
+        }
+        errors.push(diag(
+            "E-SELFDOC-CONTRACT",
+            "CLI 契約テーブルが見つかりません。`<!-- selfdoc:cli-contracts:start -->` / `<!-- selfdoc:cli-contracts:end -->` で定義してください。".to_string(),
+            None,
+        ));
+    }
+
+    let contracts = contracts_by_subcommand.into_values().collect::<Vec<_>>();
+    CliContractExtraction {
+        total_claims: expected.len(),
+        proved_claims: contracts.len(),
+        contracts,
+        errors,
+    }
+}
+
+struct ParsedContractTable {
+    entries: Vec<(String, String)>,
+    errors: Vec<Diagnostic>,
+}
+
+fn extract_tagged_section<'a>(
+    body: &'a str,
+    start_marker: &str,
+    end_marker: &str,
+) -> Option<&'a str> {
+    let start = body.find(start_marker)?;
+    let rest = &body[start + start_marker.len()..];
+    let end = rest.find(end_marker)?;
+    Some(&rest[..end])
+}
+
+fn parse_contract_table(
+    section: &str,
+    source: &str,
+    expected: &BTreeSet<String>,
+) -> ParsedContractTable {
+    let mut entries = Vec::new();
+    let mut errors = Vec::new();
+    let lines = section
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let table_lines = lines
+        .iter()
+        .copied()
+        .filter(|line| line.starts_with('|') && line.ends_with('|'))
+        .collect::<Vec<_>>();
+
+    if table_lines.len() < 3 {
+        errors.push(diag(
+            "E-SELFDOC-CONTRACT",
+            "CLI 契約テーブルの行数が不足しています（header + separator + data が必要）"
+                .to_string(),
+            Some(source.to_string()),
+        ));
+        return ParsedContractTable { entries, errors };
+    }
+
+    let headers = parse_table_row(table_lines[0]);
+    let Some(subcommand_idx) = headers.iter().position(|cell| {
+        let name = normalize_header_cell(cell);
+        name == "subcommand" || name == "サブコマンド"
+    }) else {
+        errors.push(diag(
+            "E-SELFDOC-CONTRACT",
+            "CLI 契約テーブルに `subcommand` 列がありません".to_string(),
+            Some(source.to_string()),
+        ));
+        return ParsedContractTable { entries, errors };
+    };
+    let Some(path_idx) = headers.iter().position(|cell| {
+        let name = normalize_header_cell(cell);
+        name == "impl_path" || name == "path" || name == "実装パス"
+    }) else {
+        errors.push(diag(
+            "E-SELFDOC-CONTRACT",
+            "CLI 契約テーブルに `impl_path` 列がありません".to_string(),
+            Some(source.to_string()),
+        ));
+        return ParsedContractTable { entries, errors };
+    };
+
+    let mut seen = BTreeSet::new();
+    for line in table_lines.iter().skip(2) {
+        let cells = parse_table_row(line);
+        if cells.len() <= subcommand_idx || cells.len() <= path_idx {
+            continue;
+        }
+        let subcommand = normalize_subcommand_cell(&cells[subcommand_idx]);
+        let impl_path = normalize_table_cell(&cells[path_idx]);
+        if subcommand.is_empty() || impl_path.is_empty() {
+            continue;
+        }
+        if !expected.contains(&subcommand) {
+            errors.push(diag(
+                "E-SELFDOC-CONTRACT",
+                format!("未知の subcommand です: `{subcommand}`"),
+                Some(source.to_string()),
+            ));
+            continue;
+        }
+        if !seen.insert(subcommand.clone()) {
+            errors.push(diag(
+                "E-SELFDOC-CONTRACT",
+                format!("重複した subcommand 定義です: `{subcommand}`"),
+                Some(source.to_string()),
+            ));
+            continue;
+        }
+        entries.push((subcommand, impl_path));
+    }
+
+    ParsedContractTable { entries, errors }
+}
+
+fn parse_table_row(line: &str) -> Vec<String> {
+    line.trim()
+        .trim_start_matches('|')
+        .trim_end_matches('|')
+        .split('|')
+        .map(|cell| cell.trim().to_string())
+        .collect()
+}
+
+fn normalize_header_cell(cell: &str) -> String {
+    normalize_table_cell(cell).to_ascii_lowercase()
+}
+
+fn normalize_subcommand_cell(cell: &str) -> String {
+    let cell = normalize_table_cell(cell);
+    if let Some(rest) = cell.strip_prefix("dtl ") {
+        return rest.trim().to_string();
+    }
+    cell
+}
+
+fn normalize_table_cell(cell: &str) -> String {
+    cell.trim()
+        .trim_matches('`')
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_string()
 }
 
 struct QualityGateExtraction {
@@ -1097,6 +1280,10 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
     let contract_doc_formula = build_contract_doc_exists_formula(&data.contracts);
     let contract_impl_formula = build_contract_impl_exists_formula(&data.contracts);
     let gate_source_formula = build_gate_source_exists_formula(&data.quality_gates);
+    let module_artifact_formula = build_module_artifact_consistency_formula(&data.modules);
+    let reference_consistency_formula = build_reference_fact_consistency_formula(&data.references);
+    let contract_consistency_formula = build_contract_fact_consistency_formula(&data.contracts);
+    let gate_consistency_formula = build_gate_fact_consistency_formula(&data.quality_gates);
     out.push_str(&format!(
         "(検証 ref_target_exists :引数 () :式 {ref_target_formula})\n"
     ));
@@ -1107,7 +1294,19 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
         "(検証 contract_impl_exists :引数 () :式 {contract_impl_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 gate_source_exists :引数 () :式 {gate_source_formula})\n\n"
+        "(検証 gate_source_exists :引数 () :式 {gate_source_formula})\n"
+    ));
+    out.push_str(&format!(
+        "(検証 module_artifact_consistency :引数 () :式 {module_artifact_formula})\n"
+    ));
+    out.push_str(&format!(
+        "(検証 reference_fact_consistency :引数 () :式 {reference_consistency_formula})\n"
+    ));
+    out.push_str(&format!(
+        "(検証 contract_fact_consistency :引数 () :式 {contract_consistency_formula})\n"
+    ));
+    out.push_str(&format!(
+        "(検証 gate_fact_consistency :引数 () :式 {gate_consistency_formula})\n\n"
     ));
 
     out.push_str(&format!(
@@ -1289,6 +1488,66 @@ fn build_gate_source_exists_formula(gates: &[SelfdocGate]) -> String {
             quote_atom(&gate.name),
             quote_atom(&gate.source),
             quote_atom(&gate.source)
+        )
+    });
+    fold_and_formula(clauses)
+}
+
+fn build_module_artifact_consistency_formula(modules: &[SelfdocModule]) -> String {
+    let clauses = modules.iter().map(|module| {
+        format!(
+            "(not (and (sd-module {} {} {}) (not (artifact {} {}))))",
+            quote_atom(&module.name),
+            quote_atom(&module.path),
+            module.category,
+            quote_atom(&module.path),
+            module.category
+        )
+    });
+    fold_and_formula(clauses)
+}
+
+fn build_reference_fact_consistency_formula(references: &[SelfdocLink]) -> String {
+    let clauses = references.iter().map(|reference| {
+        format!(
+            "(not (and (sd-reference {} {}) (not (ref {} {}))))",
+            quote_atom(&reference.from),
+            quote_atom(&reference.to),
+            quote_atom(&reference.from),
+            quote_atom(&reference.to)
+        )
+    });
+    fold_and_formula(clauses)
+}
+
+fn build_contract_fact_consistency_formula(contracts: &[SelfdocContract]) -> String {
+    let clauses = contracts.iter().map(|contract| {
+        format!(
+            "(not (and (sd-contract {} {} {}) (not (and (contract-doc {} {}) (contract-impl {} {})))))",
+            quote_atom(&contract.name),
+            quote_atom(&contract.source),
+            quote_atom(&contract.path),
+            quote_atom(&contract.name),
+            quote_atom(&contract.source),
+            quote_atom(&contract.name),
+            quote_atom(&contract.path)
+        )
+    });
+    fold_and_formula(clauses)
+}
+
+fn build_gate_fact_consistency_formula(gates: &[SelfdocGate]) -> String {
+    let clauses = gates.iter().map(|gate| {
+        format!(
+            "(not (and (sd-quality-gate {} {} {} {}) (not (and (gate-source {} {}) (gate-required {} {})))))",
+            quote_atom(&gate.name),
+            quote_atom(&gate.command),
+            quote_atom(&gate.source),
+            if gate.required { "yes" } else { "no" },
+            quote_atom(&gate.name),
+            quote_atom(&gate.source),
+            quote_atom(&gate.name),
+            if gate.required { "yes" } else { "no" }
         )
     });
     fold_and_formula(clauses)

@@ -2,7 +2,73 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use serde_json::Value;
 use std::fs;
+use std::path::Path;
 use tempfile::tempdir;
+
+const SELF_COMMANDS: &[&str] = &[
+    "check",
+    "prove",
+    "doc",
+    "lint",
+    "fmt",
+    "selfdoc",
+    "selfcheck",
+];
+
+fn write_selfcheck_repo(dir: &Path, rows: &[(&str, &str)]) {
+    fs::create_dir_all(dir.join("src")).expect("mkdir src");
+    fs::create_dir_all(dir.join(".github/workflows")).expect("mkdir workflow");
+
+    let mut table = String::from(
+        "<!-- selfdoc:cli-contracts:start -->\n| subcommand | impl_path |\n| --- | --- |\n",
+    );
+    for (subcommand, path) in rows {
+        table.push_str(&format!("| {subcommand} | {path} |\n"));
+    }
+    table.push_str("<!-- selfdoc:cli-contracts:end -->\n");
+
+    fs::write(dir.join("README.md"), format!("# sample\n\n{table}")).expect("write readme");
+    fs::write(dir.join("src/main.rs"), "fn main() {}\n").expect("write main");
+    fs::write(
+        dir.join(".github/workflows/ci.yml"),
+        r#"name: ci
+on: [push]
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test
+"#,
+    )
+    .expect("write workflow");
+    fs::write(
+        dir.join(".dtl-selfdoc.toml"),
+        r#"version = 1
+
+[scan]
+include = ["README.md", "src/**", ".github/workflows/**", ".dtl-selfdoc.toml"]
+exclude = []
+use_gitignore = false
+
+[[classify]]
+category = "doc"
+patterns = ["README.md"]
+
+[[classify]]
+category = "source"
+patterns = ["src/**"]
+
+[[classify]]
+category = "ci"
+patterns = [".github/workflows/**"]
+
+[[classify]]
+category = "config"
+patterns = [".dtl-selfdoc.toml"]
+"#,
+    )
+    .expect("write config");
+}
 
 #[test]
 fn cli_returns_zero_for_valid_program() {
@@ -544,4 +610,121 @@ fn cli_handles_japanese_identifiers_without_panic() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("ok"));
+}
+
+#[test]
+fn cli_selfcheck_succeeds_with_full_claim_coverage() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .map(|name| (*name, "src/main.rs"))
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid selfcheck json");
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["proof"]["claim_coverage"]["total_claims"], 7);
+    assert_eq!(value["proof"]["claim_coverage"]["proved_claims"], 7);
+    assert_eq!(value["proof"]["summary"]["failed"], 0);
+    assert!(out.join("spec.json").exists());
+    assert!(out.join("proof-trace.json").exists());
+}
+
+#[test]
+fn cli_selfcheck_fails_when_claim_coverage_is_insufficient() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .filter(|name| **name != "selfcheck")
+        .map(|name| (*name, "src/main.rs"))
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid selfcheck json");
+    assert_eq!(value["status"], "error");
+    assert_eq!(value["proof"]["summary"]["failed"], 0);
+    assert_eq!(value["proof"]["claim_coverage"]["total_claims"], 7);
+    assert_eq!(value["proof"]["claim_coverage"]["proved_claims"], 6);
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|d| d["code"] == "E-SELFCHECK")
+    );
+}
+
+#[test]
+fn cli_selfcheck_fails_when_selfdoc_obligation_fails() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .map(|name| {
+            if *name == "check" {
+                ("check", "src/missing.rs")
+            } else {
+                (*name, "src/main.rs")
+            }
+        })
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid selfcheck json");
+    assert_eq!(value["status"], "error");
+    assert_eq!(value["proof"]["claim_coverage"]["total_claims"], 7);
+    assert_eq!(value["proof"]["claim_coverage"]["proved_claims"], 7);
+    assert!(
+        value["proof"]["summary"]["failed"]
+            .as_u64()
+            .expect("failed count")
+            > 0
+    );
 }

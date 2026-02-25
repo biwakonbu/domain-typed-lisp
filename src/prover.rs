@@ -12,7 +12,7 @@ use crate::stratify::compute_strata;
 use crate::typecheck::check_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
-pub const PROOF_TRACE_SCHEMA_VERSION: &str = "2.0.0";
+pub const PROOF_TRACE_SCHEMA_VERSION: &str = "2.1.0";
 pub const DOC_SPEC_SCHEMA_VERSION: &str = "2.0.0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +26,7 @@ pub struct ProofTrace {
     pub schema_version: String,
     pub profile: String,
     pub summary: ProofSummary,
+    pub claim_coverage: ClaimCoverage,
     pub obligations: Vec<ObligationTrace>,
 }
 
@@ -34,6 +35,12 @@ pub struct ProofSummary {
     pub total: usize,
     pub proved: usize,
     pub failed: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaimCoverage {
+    pub total_claims: usize,
+    pub proved_claims: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -255,12 +262,20 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
             proved,
             failed: total.saturating_sub(proved),
         },
+        claim_coverage: ClaimCoverage {
+            total_claims: total,
+            proved_claims: proved,
+        },
         obligations: traces,
     })
 }
 
 pub fn has_failed_obligation(trace: &ProofTrace) -> bool {
     trace.obligations.iter().any(|o| o.result != "proved")
+}
+
+pub fn has_full_claim_coverage(trace: &ProofTrace) -> bool {
+    trace.claim_coverage.proved_claims == trace.claim_coverage.total_claims
 }
 
 pub fn write_proof_trace(path: &Path, trace: &ProofTrace) -> Result<(), Diagnostic> {
