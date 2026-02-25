@@ -107,6 +107,16 @@ jobs:
       - name: dtl fmt --check
         run: cargo run -- fmt examples/customer_contract_ja.dtl --check
 
+  cli-selfcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: dtl selfcheck --format json
+        run: |
+          OUT_DIR="$(mktemp -d)"
+          cargo run -- selfcheck --repo . --out "$OUT_DIR" --format json
+
   bench:
     runs-on: ubuntu-latest
     steps:

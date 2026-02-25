@@ -260,9 +260,10 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - `intermediate.dsl` は通常 `null`、`selfdoc` 実行時は `selfdoc.generated.dtl` です。
 
 ### 9.2 `proof-trace.json`
-- `schema_version`: トレース契約バージョン
+- `schema_version`: `2.1.0`（トレース契約バージョン）
 - `profile`: `standard` または `selfdoc`
 - `summary`: `total/proved/failed` の要約
+- `claim_coverage`: `total_claims/proved_claims`（`selfcheck` では 100% 必須）
 - `obligations[].id`: `defn::...` または `assert::...`
 - `obligations[].result`: `proved` / `failed`
 - `counterexample`: 失敗時のみ出現（`valuation`, `premises`, `missing_goals`）

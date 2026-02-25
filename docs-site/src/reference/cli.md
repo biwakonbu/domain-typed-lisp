@@ -26,6 +26,25 @@ dtl doc <FILE>... --out DIR [--format markdown|json] [--pdf]
 - 証明成功時のみ成果物を出力
 - `--pdf` は markdown 出力時のみ有効（失敗は warning）
 
+## selfdoc
+
+```bash
+dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]
+```
+
+- `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を一気通貫で実行
+- `--config` 省略時は `<repo>/.dtl-selfdoc.toml`
+- README の `<!-- selfdoc:cli-contracts:start -->` テーブルから CLI 契約を抽出
+
+## selfcheck
+
+```bash
+dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--pdf]
+```
+
+- `selfdoc` フロー + 厳密チェック（`claim_coverage = 100%` 必須）
+- 失敗時も `proof-trace.json` を出力
+
 ## lint
 
 ```bash

@@ -26,6 +26,7 @@
   - `doc --format markdown|json` の成果物切替契約
   - `selfdoc` の終了コード・設定欠如 (`exit=2`)・成果物契約
   - `selfdoc` の fail-fast 参照検証契約（`E-SELFDOC-REF`）
+  - `selfcheck` の coverage 完備 / coverage 不足 / 義務失敗契約
 - property
   - 固定点の冪等性・単調性
   - 証明結果の順序不変性
@@ -48,9 +49,10 @@
 15. `dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex`
 16. `dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup`
 17. `dtl selfdoc --repo . --out out_selfdoc --format json`
-18. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
-19. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
-20. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
+18. `dtl selfcheck --repo . --out out_selfcheck --format json`
+19. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
+20. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
+21. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
 1. 仕様更新（language-spec / migration）
@@ -68,4 +70,5 @@
   - `cli-prove`: `integration_prove_doc_cli`（prove系）+ `integration_prove_json_contract`
   - `cli-doc`: `integration_prove_doc_cli`（doc系）
   - `cli-selfdoc`: `integration_selfdoc_cli`
+  - `cli-selfcheck`: `cargo run -- selfcheck --repo . --out <tmp> --format json`
   - `bench`: `perf_scaling` の代表ケースをスモーク実行

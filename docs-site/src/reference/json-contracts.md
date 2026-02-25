@@ -21,13 +21,13 @@ CI や外部連携では、以下のトップレベル構造を前提に固定�
 成功:
 
 ```json
-{"status":"ok","proof":{"schema_version":"2.0.0","profile":"standard","summary":{"total":1,"proved":1,"failed":0},"obligations":[{"id":"assert::...","result":"proved"}]}}
+{"status":"ok","proof":{"schema_version":"2.1.0","profile":"standard","summary":{"total":1,"proved":1,"failed":0},"claim_coverage":{"total_claims":1,"proved_claims":1},"obligations":[{"id":"assert::...","result":"proved"}]}}
 ```
 
 失敗:
 
 ```json
-{"status":"error","proof":{"schema_version":"2.0.0","profile":"standard","summary":{"total":1,"proved":0,"failed":1},"obligations":[{"result":"failed"}]}}
+{"status":"error","proof":{"schema_version":"2.1.0","profile":"standard","summary":{"total":1,"proved":0,"failed":1},"claim_coverage":{"total_claims":1,"proved_claims":0},"obligations":[{"result":"failed"}]}}
 ```
 
 ## lint
@@ -73,6 +73,10 @@ CI や外部連携では、以下のトップレベル構造を前提に固定�
 - `proof-trace.json`
 - `doc-index.json`
 - `spec.md` または `spec.json`
+
+## selfcheck
+
+`dtl selfcheck --out DIR --format json` は `prove` 互換の JSON を返し、追加で `claim_coverage=100%` を要求します。
 
 契約の実測例はテストを参照してください。
 - `tests/e2e_examples.rs`

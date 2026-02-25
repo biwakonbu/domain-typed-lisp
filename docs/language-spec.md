@@ -32,8 +32,12 @@
   - 証明がすべて成功した場合のみドキュメント束を生成する。
 - `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
   - `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を実行し、自己記述成果物を生成する。
+  - README または language-spec の `<!-- selfdoc:cli-contracts:start -->` 契約テーブルから CLI 契約を抽出する。
   - `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
   - 設定ファイル未配置時はテンプレートを stderr に出力し `exit code = 2` で終了する。
+- `dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--pdf]`
+  - `selfdoc` と同一フローを実行し、`claim_coverage = 100%` かつ全義務 `proved` の場合のみ成功する。
+  - 失敗時も `proof-trace.json` は出力する。
 - `dtl lint <FILE>... [--format text|json] [--deny-warnings] [--semantic-dup]`
   - 重複検出（`L-DUP-*`）と未使用宣言（`L-UNUSED-DECL`）を警告として出力する。
 - `dtl fmt <FILE>... [--check] [--stdout]`
@@ -186,8 +190,8 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 8. 生成物
 - `prove --out DIR`:
-  - `proof-trace.json`（`schema_version = "2.0.0"`）
-  - 必須フィールド: `profile`（`standard|selfdoc`）, `summary`（`total/proved/failed`）
+  - `proof-trace.json`（`schema_version = "2.1.0"`）
+  - 必須フィールド: `profile`（`standard|selfdoc`）, `summary`（`total/proved/failed`）, `claim_coverage`（`total_claims/proved_claims`）
 - `doc --out DIR --format markdown`:
   - `spec.md`
   - `proof-trace.json`
@@ -222,6 +226,7 @@ term = var | symbol | int | bool | (Ctor term*)
 - `E-SELFDOC-REF`: selfdoc 参照抽出/参照先不整合
 - `E-SELFDOC-CONTRACT`: CLI 契約抽出不整合
 - `E-SELFDOC-GATE`: quality gate 抽出不整合
+- `E-SELFCHECK`: selfcheck の coverage 不足
 
 ## 10. lint コード
 - `L-DUP-EXACT`: 構文正規化後に確定重複

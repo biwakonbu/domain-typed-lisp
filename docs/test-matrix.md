@@ -51,3 +51,7 @@
 | C-21 | CLI 異常 | `selfdoc` 設定ファイル欠如 | exit 2 + テンプレ出力 | language-spec §2 |
 | C-22 | CLI 正常 | `selfdoc --format json` | `selfdoc.generated.dtl` + `spec.json` + `proof-trace.json` + `doc-index.json` | language-spec §2/§8 |
 | C-23 | CLI 異常 | `selfdoc` 参照欠落 | `E-SELFDOC-REF` fail-fast | language-spec §9 |
+| C-24 | CLI 異常 | `selfdoc` 構造化契約テーブル欠如 + `dtl <subcommand>` 文字列 | `E-SELFDOC-CONTRACT` | language-spec §2/§9 |
+| C-25 | CLI 正常 | `selfcheck --format json`（coverage 完備） | exit 0 + `status=ok` + `claim_coverage=100%` | language-spec §2/§8 |
+| C-26 | CLI 異常 | `selfcheck`（coverage 不足） | `E-SELFCHECK` + `status=error` | language-spec §2/§9 |
+| C-27 | CLI 異常 | `selfcheck`（証明義務失敗） | `status=error` + failed obligation | language-spec §2/§7/§8 |

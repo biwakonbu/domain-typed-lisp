@@ -30,6 +30,7 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown
 cargo run -- doc examples/customer_contract_ja.dtl --out out --format markdown --pdf
 cargo run -- doc examples/customer_contract_ja.dtl --out out_json --format json
 cargo run -- selfdoc --repo . --out out_selfdoc --format json
+cargo run -- selfcheck --repo . --out out_selfcheck --format json
 
 # 日本語ドメイン型サンプル
 cargo run -- check examples/customer_contract_ja.dtl
@@ -131,7 +132,8 @@ dtl doc <FILE>... --out DIR [--format markdown|json]
   - `--format markdown`: `spec.md` / `proof-trace.json` / `doc-index.json`
   - `--pdf`: markdown 出力後に `spec.pdf` 生成を試行（失敗は warning）
   - `--format json`: `spec.json` / `proof-trace.json` / `doc-index.json`
-  - `proof-trace.json` / `spec.json` / `doc-index.json` の `schema_version` は `2.0.0`
+  - `proof-trace.json` の `schema_version` は `2.1.0`
+  - `spec.json` / `doc-index.json` の `schema_version` は `2.0.0`
 
 ### `selfdoc`
 ```bash
@@ -141,6 +143,27 @@ dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--
 - `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
 - 設定ファイル未配置時はテンプレートを stderr に出力し `exit code 2` で終了する。
 - 出力は `selfdoc.generated.dtl` / `proof-trace.json` / `doc-index.json` / `spec.md|spec.json`。
+
+### `selfcheck`
+```bash
+dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--pdf]
+```
+- `selfdoc` と同じ抽出・証明フローを実行し、`claim_coverage = 100%` を追加で要求する。
+- `--format` は CLI 応答形式、`--doc-format` は成果物形式を指定する（既定: json）。
+- 失敗時も `proof-trace.json` は出力し、`status=error` と `E-SELFCHECK` を返す。
+
+### selfdoc CLI契約テーブル
+<!-- selfdoc:cli-contracts:start -->
+| subcommand | impl_path |
+| --- | --- |
+| check | src/main.rs |
+| prove | src/main.rs |
+| doc | src/main.rs |
+| selfdoc | src/main.rs |
+| selfcheck | src/main.rs |
+| lint | src/main.rs |
+| fmt | src/main.rs |
+<!-- selfdoc:cli-contracts:end -->
 
 ### `lint`
 ```bash
@@ -180,6 +203,7 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 - [エラーコード別トラブルシュート v0.5](docs/troubleshooting-errors-ja.md)
 - [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
 - [v0.2 移行ガイド（v0.4 追補）](docs/migration-v0.2.md)
+- [自己証明判定基準（厳密）](docs/self-proof-criteria.md)
 - [検証計画](docs/verification-plan.md)
 - [テストマトリクス](docs/test-matrix.md)
 - [複雑シナリオ集](docs/example-scenarios-ja.md)
