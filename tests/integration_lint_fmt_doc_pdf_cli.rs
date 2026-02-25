@@ -526,3 +526,82 @@ fn cli_fmt_rejects_selfdoc_forms() {
         .failure()
         .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED"));
 }
+
+#[test]
+fn cli_fmt_accepts_contract_like_identifiers_without_selfdoc_tags() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("contract_names.dtl");
+    fs::write(
+        &src,
+        r#"
+        ; syntax: surface
+        (型 契約)
+        (関係 契約登録 :引数 (契約))
+        (関数 契約可否 :引数 ((x 契約)) :戻り Bool :本体 true)
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("fmt").arg(&src).assert().success();
+}
+
+#[test]
+fn cli_fmt_rejects_selfdoc_form_when_tag_starts_on_next_line() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("selfdoc_multiline.dtl");
+    fs::write(
+        &src,
+        r#"
+        ; syntax: surface
+        (契約
+          :名前 "cli::check"
+          :出典 "README.md"
+          :パス "src/main.rs")
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("fmt")
+        .arg(&src)
+        .arg("--check")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED"));
+}
+
+#[test]
+fn cli_fmt_incomplete_list_reports_parse_error_instead_of_selfdoc_error() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("incomplete.dtl");
+    fs::write(&src, "(").expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("fmt")
+        .arg(&src)
+        .arg("--check")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED").not());
+}
+
+#[test]
+fn cli_fmt_stdout_requires_single_input_file() {
+    let dir = tempdir().expect("tempdir");
+    let src_a = dir.path().join("a.dtl");
+    let src_b = dir.path().join("b.dtl");
+    fs::write(&src_a, "(sort A)\n").expect("write a");
+    fs::write(&src_b, "(sort B)\n").expect("write b");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("fmt")
+        .arg(&src_a)
+        .arg(&src_b)
+        .arg("--stdout")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "E-IO: --stdout requires exactly one input file",
+        ));
+}

@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::sync::OnceLock;
 use std::{collections::HashSet, fmt::Write};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -795,79 +796,14 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
 }
 
 fn contains_selfdoc_form(src: &str) -> bool {
-    const HEADS: &[&str] = &[
-        "project",
-        "module",
-        "reference",
-        "contract",
-        "quality-gate",
-        "プロジェクト",
-        "モジュール",
-        "参照",
-        "契約",
-        "品質ゲート",
-    ];
-
-    let mut idx = 0;
-    while idx < src.len() {
-        let Some(ch) = src[idx..].chars().next() else {
-            break;
-        };
-        let ch_len = ch.len_utf8();
-        if ch != '(' {
-            idx += ch_len;
-            continue;
-        }
-
-        let mut head_start = idx + ch_len;
-        while head_start < src.len() {
-            let Some(ws) = src[head_start..].chars().next() else {
-                break;
-            };
-            if !ws.is_whitespace() {
-                break;
-            }
-            head_start += ws.len_utf8();
-        }
-
-        if head_start >= src.len() {
-            break;
-        }
-
-        let mut head_end = head_start;
-        while head_end < src.len() {
-            let Some(c) = src[head_end..].chars().next() else {
-                break;
-            };
-            if c.is_whitespace() || c == '(' || c == ')' {
-                break;
-            }
-            head_end += c.len_utf8();
-        }
-
-        if head_end > head_start {
-            let head = &src[head_start..head_end];
-            if HEADS.contains(&head) {
-                let mut cursor = head_end;
-                while cursor < src.len() {
-                    let Some(c) = src[cursor..].chars().next() else {
-                        break;
-                    };
-                    if !c.is_whitespace() {
-                        if c == ':' {
-                            return true;
-                        }
-                        break;
-                    }
-                    cursor += c.len_utf8();
-                }
-            }
-        }
-
-        idx += ch_len;
-    }
-
-    false
+    static SELF_DOC_FORM_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let pattern = SELF_DOC_FORM_RE.get_or_init(|| {
+        regex::Regex::new(
+            r"\(\s*(?:project|module|reference|contract|quality-gate|プロジェクト|モジュール|参照|契約|品質ゲート)\s*:",
+        )
+        .expect("valid selfdoc regex")
+    });
+    pattern.is_match(src)
 }
 
 fn as_doc_bundle_format(format: DocFormat) -> DocBundleFormat {
@@ -1209,29 +1145,4 @@ fn update_doc_index_pdf(
     )
     .map_err(|e| format!("doc-index.json 書き込み失敗: {e}"))?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::contains_selfdoc_form;
-
-    #[test]
-    fn contains_selfdoc_form_detects_exact_heads_only() {
-        let src = r#"
-            (型 主体)
-            (関係 契約登録 :引数 (主体))
-            (契約 :名前 "cli::check" :source "README.md" :path "src/main.rs")
-        "#;
-        assert!(contains_selfdoc_form(src));
-    }
-
-    #[test]
-    fn contains_selfdoc_form_avoids_prefix_false_positive() {
-        let src = r#"
-            (型 契約)
-            (関係 契約登録 :引数 (契約))
-            (関数 契約可否 :引数 ((x 契約)) :戻り Bool :本体 true)
-        "#;
-        assert!(!contains_selfdoc_form(src));
-    }
 }

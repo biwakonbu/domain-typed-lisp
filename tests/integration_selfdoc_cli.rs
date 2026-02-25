@@ -232,3 +232,36 @@ patterns = [".dtl-selfdoc.toml"]
     assert!(!out.join("spec.md").exists());
     assert!(!out.join("selfdoc.generated.dtl").exists());
 }
+
+#[test]
+fn selfdoc_ignores_remote_action_output_paths() {
+    let dir = tempdir().expect("tempdir");
+    write_base_repo(dir.path());
+
+    fs::write(
+        dir.path().join(".github/workflows/ci.yml"),
+        r#"name: ci
+on: [push]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/book
+"#,
+    )
+    .expect("rewrite workflow");
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("selfdoc")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .success();
+
+    assert!(out.join("proof-trace.json").exists());
+}

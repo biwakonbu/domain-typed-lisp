@@ -728,3 +728,68 @@ fn cli_selfcheck_fails_when_selfdoc_obligation_fails() {
             > 0
     );
 }
+
+#[test]
+fn cli_selfcheck_text_missing_config_returns_code_2() {
+    let dir = tempdir().expect("tempdir");
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("E-SELFDOC-CONFIG"));
+}
+
+#[test]
+fn cli_selfcheck_text_reports_claim_coverage_shortfall() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .filter(|name| **name != "selfcheck")
+        .map(|name| (*name, "src/main.rs"))
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .assert()
+        .failure()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("E-SELFCHECK"));
+}
+
+#[test]
+fn cli_selfcheck_text_with_json_doc_pdf_prints_skip_warning() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .map(|name| (*name, "src/main.rs"))
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--doc-format")
+        .arg("json")
+        .arg("--pdf")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok"))
+        .stderr(predicate::str::contains(
+            "JSON 形式では PDF 生成をスキップしました",
+        ));
+}
