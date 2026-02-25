@@ -691,17 +691,20 @@ fn extract_references(repo: &Path, artifacts: &[Artifact]) -> ReferenceExtractio
 fn collect_yaml_paths(value: &YamlValue, out: &mut Vec<String>) {
     match value {
         YamlValue::Mapping(map) => {
+            let mut has_local_uses = false;
+            if let Some(YamlValue::String(uses)) = map.get(YamlValue::String("uses".to_string()))
+                && uses.starts_with("./")
+            {
+                has_local_uses = true;
+                out.push(uses.to_string());
+            }
+
             for (key, child) in map {
-                if let YamlValue::String(k) = key {
-                    if k == "uses" {
-                        if let YamlValue::String(s) = child
-                            && s.starts_with("./")
-                        {
-                            out.push(s.to_string());
-                        }
-                    } else if k == "path" {
-                        collect_path_values(child, out);
-                    }
+                if let YamlValue::String(k) = key
+                    && k == "path"
+                    && has_local_uses
+                {
+                    collect_path_values(child, out);
                 }
                 collect_yaml_paths(child, out);
             }
@@ -898,17 +901,17 @@ fn extract_cli_contracts(repo: &Path, subcommands: &[String]) -> CliContractExtr
                     source: source.to_string(),
                     path: impl_path,
                 };
-                if let Some(prev) = contracts_by_subcommand.insert(key.clone(), contract) {
-                    if prev.source != source {
-                        errors.push(diag(
-                            "E-SELFDOC-CONTRACT",
-                            format!(
-                                "CLI 契約が複数文書で重複しています: cli::{key} ({}, {})",
-                                prev.source, source
-                            ),
-                            Some(source.to_string()),
-                        ));
-                    }
+                if let Some(prev) = contracts_by_subcommand.insert(key.clone(), contract)
+                    && prev.source != source
+                {
+                    errors.push(diag(
+                        "E-SELFDOC-CONTRACT",
+                        format!(
+                            "CLI 契約が複数文書で重複しています: cli::{key} ({}, {})",
+                            prev.source, source
+                        ),
+                        Some(source.to_string()),
+                    ));
                 }
             }
             continue;
