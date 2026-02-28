@@ -119,3 +119,29 @@ fn parser_accepts_syntax_auto_pragma_when_surface_is_consistent() {
     assert_eq!(program.relations.len(), 1);
     assert_eq!(program.facts.len(), 1);
 }
+
+#[test]
+fn parser_accepts_core_alias_declaration() {
+    let src = r#"
+        (data Action (read) (write))
+        (alias 閲覧 read)
+    "#;
+
+    let program = parse_program(src).expect("core alias should parse");
+    assert_eq!(program.aliases.len(), 1);
+    assert_eq!(program.aliases[0].alias, "閲覧");
+    assert_eq!(program.aliases[0].canonical, "read");
+}
+
+#[test]
+fn parser_accepts_surface_alias_declaration() {
+    let src = r#"
+        ; syntax: surface
+        (同義語 :別名 閲覧 :正規 read)
+    "#;
+
+    let program = parse_program(src).expect("surface alias should parse");
+    assert_eq!(program.aliases.len(), 1);
+    assert_eq!(program.aliases[0].alias, "閲覧");
+    assert_eq!(program.aliases[0].canonical, "read");
+}

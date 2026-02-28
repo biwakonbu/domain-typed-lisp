@@ -48,6 +48,43 @@ fn cli_prove_json_writes_trace_file() {
 }
 
 #[test]
+fn cli_prove_json_accepts_constructor_alias() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("ok_alias.dtl");
+    let out_dir = dir.path().join("out_alias");
+    fs::write(
+        &src,
+        r#"
+        (data Action (read) (write))
+        (alias 閲覧 read)
+        (relation allowed (Action))
+        (fact allowed (閲覧))
+        (universe Action ((read) (write)))
+        (assert consistency ((a Action)) (not (and (allowed a) (not (allowed a)))))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("prove")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--out")
+        .arg(&out_dir)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("json");
+    assert_eq!(value["status"], "ok");
+    assert!(out_dir.join("proof-trace.json").exists());
+}
+
+#[test]
 fn cli_prove_returns_error_when_obligation_fails() {
     let dir = tempdir().expect("tempdir");
     let src = dir.path().join("ng.dtl");

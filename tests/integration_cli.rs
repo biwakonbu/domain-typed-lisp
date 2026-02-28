@@ -431,6 +431,63 @@ fn cli_json_output_for_totality_error_has_machine_readable_fields() {
 }
 
 #[test]
+fn cli_json_output_for_mutual_recursion_edge_reports_reason_and_arg_indices() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("mutual_totality_ng_json.dtl");
+    fs::write(
+        &path,
+        r#"
+        (data Nat (z) (s Nat))
+        (defn f ((n Nat)) Bool (g n))
+        (defn g ((n Nat)) Bool (f n))
+        "#,
+    )
+    .expect("write");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("check")
+        .arg(&path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty())
+        .get_output()
+        .stdout
+        .clone();
+    let value: Value = serde_json::from_slice(&output).expect("valid json");
+    assert_eq!(value["status"], "error");
+
+    let total = value["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .filter(|d| d["code"] == "E-TOTAL")
+        .collect::<Vec<_>>();
+    assert_eq!(total.len(), 2);
+    assert!(
+        total
+            .iter()
+            .all(|d| d["reason"] == "non_decreasing_argument")
+    );
+    assert!(
+        total
+            .iter()
+            .all(|d| d["message"].as_str().unwrap_or_default().contains("->"))
+    );
+    assert!(total.iter().all(|d| {
+        d["arg_indices"]
+            .as_array()
+            .expect("arg_indices array")
+            .iter()
+            .map(|v| v.as_u64().expect("u64"))
+            .collect::<Vec<_>>()
+            == vec![1]
+    }));
+}
+
+#[test]
 fn cli_json_output_for_multi_file_failure_has_per_file_source() {
     let dir = tempdir().expect("tempdir");
     let schema = dir.path().join("schema.dtl");

@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::ast::{AssertDecl, Defn, Expr, Param, Pattern, Program, Rule};
 use crate::diagnostics::Span;
 use crate::logic_engine::{DerivedFacts, KnowledgeBase, Value, solve_facts};
-use crate::name_resolve::resolve_program;
+use crate::name_resolve::{normalize_program_aliases, resolve_program};
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,18 +94,22 @@ const MAX_EVAL_DEPTH_LIMIT: usize = 4096;
 const MAX_FUNCTION_MODEL_VALUES: usize = 4096;
 
 pub fn lint_program(program: &Program, options: LintOptions) -> Vec<LintDiagnostic> {
+    let normalized = match normalize_program_aliases(program) {
+        Ok(program) => program,
+        Err(_) => return Vec::new(),
+    };
     let mut out = Vec::new();
 
     // 既存解決エラーがある場合は lint を進めてもノイズになるため打ち切る。
-    if !resolve_program(program).is_empty() {
+    if !resolve_program(&normalized).is_empty() {
         return out;
     }
 
-    out.extend(lint_exact_duplicates(program));
-    out.extend(lint_unused_declarations(program));
+    out.extend(lint_exact_duplicates(&normalized));
+    out.extend(lint_unused_declarations(&normalized));
 
     if options.semantic_dup {
-        out.extend(lint_semantic_duplicates(program));
+        out.extend(lint_semantic_duplicates(&normalized));
     }
 
     out

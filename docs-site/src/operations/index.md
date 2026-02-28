@@ -4,3 +4,4 @@
 
 - [HTML 生成とローカル確認](./local-build.md)
 - [GitHub Pages 運用](./github-pages.md)
+- [拡張公開フロー](./extension-release.md)

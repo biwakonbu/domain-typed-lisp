@@ -53,3 +53,45 @@ fn resolve_rejects_unknown_constructor_in_pattern() {
         "unknown constructor in pattern",
     );
 }
+
+#[test]
+fn resolve_accepts_alias_for_constructor_usage() {
+    let src = r#"
+        (data Action (read) (write))
+        (alias 閲覧 read)
+        (defn ok ((a Action)) Bool
+          (match a
+            ((閲覧) true)
+            ((write) false)))
+    "#;
+    let program = parse_program(src).expect("parse should succeed");
+    let report = check_program(&program).expect("check should succeed");
+    assert_eq!(report.errors, 0);
+}
+
+#[test]
+fn resolve_rejects_alias_to_unknown_canonical_constructor() {
+    expect_error(
+        "(data Action (read)) (alias 閲覧 unknown)",
+        "E-RESOLVE",
+        "alias canonical constructor is undefined",
+    );
+}
+
+#[test]
+fn resolve_rejects_alias_cycle() {
+    expect_error(
+        "(data Action (read)) (alias A B) (alias B A)",
+        "E-RESOLVE",
+        "alias cycle detected",
+    );
+}
+
+#[test]
+fn resolve_rejects_alias_conflict_with_constructor() {
+    expect_error(
+        "(data Action (read)) (alias read read)",
+        "E-DATA",
+        "alias conflicts with constructor",
+    );
+}

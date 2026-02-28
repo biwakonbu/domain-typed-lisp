@@ -4,6 +4,7 @@ use crate::types::{Atom, Formula, LogicTerm, Type};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub imports: Vec<ImportDecl>,
+    pub aliases: Vec<AliasDecl>,
     pub sorts: Vec<SortDecl>,
     pub data_decls: Vec<DataDecl>,
     pub relations: Vec<RelationDecl>,
@@ -18,6 +19,7 @@ impl Program {
     pub fn new() -> Self {
         Self {
             imports: Vec::new(),
+            aliases: Vec::new(),
             sorts: Vec::new(),
             data_decls: Vec::new(),
             relations: Vec::new(),
@@ -39,6 +41,13 @@ impl Default for Program {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportDecl {
     pub path: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasDecl {
+    pub alias: String,
+    pub canonical: String,
     pub span: Span,
 }
 

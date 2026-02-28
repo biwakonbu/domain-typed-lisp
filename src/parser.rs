@@ -3,8 +3,8 @@ use std::iter::Peekable;
 use std::str::CharIndices;
 
 use crate::ast::{
-    AssertDecl, ConstructorDecl, DataDecl, Defn, Expr, Fact, ImportDecl, MatchArm, Param, Pattern,
-    Program, RelationDecl, Rule, SortDecl, UniverseDecl,
+    AliasDecl, AssertDecl, ConstructorDecl, DataDecl, Defn, Expr, Fact, ImportDecl, MatchArm,
+    Param, Pattern, Program, RelationDecl, Rule, SortDecl, UniverseDecl,
 };
 use crate::diagnostics::{Diagnostic, make_span};
 use crate::types::{Atom, Formula, LogicTerm, Type};
@@ -83,6 +83,7 @@ fn parse_program_forms(src: &str, sexprs: &[SExpr]) -> Result<Program, Vec<Diagn
     for form in sexprs {
         match parse_toplevel(src, form) {
             Ok(TopLevel::Import(i)) => program.imports.push(i),
+            Ok(TopLevel::Alias(a)) => program.aliases.push(a),
             Ok(TopLevel::Sort(s)) => program.sorts.push(s),
             Ok(TopLevel::Data(d)) => program.data_decls.push(d),
             Ok(TopLevel::Relation(r)) => program.relations.push(r),
@@ -213,7 +214,21 @@ fn syntax_marker(form: &SExpr) -> Option<SyntaxMarker> {
                 end,
             })
         }
+        "同義語" => Some(SyntaxMarker {
+            signal: SyntaxSignal::Surface,
+            reason: "同義語 Surface ヘッド",
+            start,
+            end,
+        }),
         "import" | "インポート" | "sort" => None,
+        "alias" => syntax_marker_from_tag_position(
+            list,
+            1,
+            "core alias 形式",
+            "surface alias タグ形式",
+            start,
+            end,
+        ),
         "data" => syntax_marker_from_tag_position(
             list,
             2,
@@ -352,6 +367,7 @@ fn looks_like_surface(src: &str) -> bool {
         "(reference :",
         "(contract :",
         "(quality-gate :",
+        "(同義語 :",
         ":引数",
         ":戻り",
         ":本体",
@@ -371,6 +387,9 @@ fn looks_like_surface(src: &str) -> bool {
 fn attach_source_to_program_spans(program: &mut Program, source: &str) {
     for import in &mut program.imports {
         attach_span_source(&mut import.span, source);
+    }
+    for alias in &mut program.aliases {
+        attach_span_source(&mut alias.span, source);
     }
     for sort in &mut program.sorts {
         attach_span_source(&mut sort.span, source);
@@ -758,6 +777,42 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 ));
             }
             Ok(format!("(sort {})", sexpr_to_string(&list[1])))
+        }
+        "alias" => {
+            if list.len() < 3 {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "alias expects tags :別名/:正規",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            if !is_tag_atom(&list[1]) {
+                return Err(Diagnostic::new(
+                    "E-PARSE",
+                    "alias expects tags :別名/:正規",
+                    Some(make_span(src, start, end)),
+                ));
+            }
+            let tags = parse_tag_pairs(src, list, 1)?;
+            let alias = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":別名", ":alias"],
+                "alias requires :別名",
+            )?;
+            let canonical = required_tag_value(
+                src,
+                form,
+                &tags,
+                &[":正規", ":canonical"],
+                "alias requires :正規",
+            )?;
+            Ok(format!(
+                "(alias {} {})",
+                sexpr_to_string(alias),
+                sexpr_to_string(canonical)
+            ))
         }
         "data" => {
             if list.len() < 3 {
@@ -1183,6 +1238,7 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
 fn canonical_surface_head(head: &str) -> Option<&'static str> {
     match head {
         "import" | "インポート" => Some("import"),
+        "alias" | "同義語" => Some("alias"),
         "sort" | "型" => Some("sort"),
         "data" | "データ" => Some("data"),
         "relation" | "関係" => Some("relation"),
@@ -1332,6 +1388,7 @@ fn is_tag_atom(node: &SExpr) -> bool {
 
 enum TopLevel {
     Import(ImportDecl),
+    Alias(AliasDecl),
     Sort(SortDecl),
     Data(DataDecl),
     Relation(RelationDecl),
@@ -1372,6 +1429,7 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
 
     match head {
         "import" => parse_import(src, list),
+        "alias" => parse_alias(src, list),
         "sort" => parse_sort(src, list),
         "data" => parse_data(src, list),
         "relation" => parse_relation(src, list),
@@ -1403,6 +1461,25 @@ fn parse_import(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
     let (s, e) = list[0].span_bounds();
     Ok(TopLevel::Import(ImportDecl {
         path,
+        span: make_span(src, s, e),
+    }))
+}
+
+fn parse_alias(src: &str, list: &[SExpr]) -> Result<TopLevel, Diagnostic> {
+    if list.len() != 3 {
+        let (s, e) = list[0].span_bounds();
+        return Err(Diagnostic::new(
+            "E-PARSE",
+            "alias expects alias and canonical constructor name",
+            Some(make_span(src, s, e)),
+        ));
+    }
+    let alias = atom_required(src, &list[1], "alias name")?;
+    let canonical = atom_required(src, &list[2], "canonical constructor name")?;
+    let (s, e) = list[0].span_bounds();
+    Ok(TopLevel::Alias(AliasDecl {
+        alias,
+        canonical,
         span: make_span(src, s, e),
     }))
 }

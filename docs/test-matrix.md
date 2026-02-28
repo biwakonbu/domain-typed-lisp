@@ -1,25 +1,27 @@
-# テストマトリクス（v0.5）
+# テストマトリクス（v0.6）
 
 | ID | 種別 | 入力概要 | 期待結果 | 関連仕様 |
 |---|---|---|---|---|
 | P-01 | parser 正常 | `data/assert/universe/match` を含む構成 | parse 成功 | language-spec §3/§4 |
 | P-02 | parser 異常 | `data` constructor なし | `E-PARSE` | language-spec §3.3 |
 | P-03 | parser 異常 | `match` arm 形状不正 | `E-PARSE` | language-spec §4 |
-| P-04 | parser 正常 | surface タグ構文（`型/データ/関係`） | parse 成功 | language-spec §3.10 |
-| P-05 | parser 異常 | surface 主要フォームでタグ欠落 | `E-PARSE` | language-spec §3.10 |
+| P-04 | parser 正常 | surface タグ構文（`型/データ/関係`） | parse 成功 | language-spec §3.11 |
+| P-05 | parser 異常 | surface 主要フォームでタグ欠落 | `E-PARSE` | language-spec §3.11 |
 | P-06 | parser 異常 | `syntax:auto` で Core/Surface 混在 | `E-SYNTAX-AUTO` | language-spec §1/§9 |
-| P-07 | parser 正常 | selfdoc Surface フォーム（`project/module/reference/contract/quality-gate`） | parse 成功（`fact` へデシュガ） | language-spec §3.11 |
+| P-07 | parser 正常 | selfdoc Surface フォーム（`project/module/reference/contract/quality-gate`） | parse 成功（`fact` へデシュガ） | language-spec §3.12 |
 | P-08 | parser 異常 | quoted Atom の未対応エスケープ | `E-PARSE` | language-spec §1.1 |
+| P-09 | parser 正常 | constructor alias（Core `alias` / Surface `同義語`） | parse 成功 | language-spec §3.2 |
 | R-01 | resolve 異常 | constructor 重複 | `E-DATA` | language-spec §3.3 |
 | R-02 | resolve 正常 | 再帰 ADT（`(data List (nil) (cons Symbol List))`） | 成功 | language-spec §3.3 |
 | R-03 | resolve 異常 | 未定義 universe 型 | `E-RESOLVE` | language-spec §3.8 |
 | R-04 | resolve 異常 | pattern の未知 constructor | `E-RESOLVE` | language-spec §4 |
+| R-05 | resolve 異常 | alias 循環/未定義 canonical | `E-RESOLVE` | language-spec §3.2 |
 | T-01 | type 正常 | constructor + 網羅 `match` | 成功 | language-spec §4/§7 |
 | T-02 | type 異常 | 非網羅 `match` | `E-MATCH` | language-spec §7 |
 | T-03 | type 異常 | 到達不能 `match` arm | `E-MATCH` | language-spec §7 |
 | T-04 | type 異常 | 非構造再帰（非 tail / 非減少） | `E-TOTAL` | language-spec §0/§7 |
 | T-05 | type 異常 | `Domain` を `Symbol` に暗黙渡し | `E-TYPE` | language-spec §7 |
-| T-06 | type 異常 | 相互再帰 | `E-TOTAL` | language-spec §0/§7 |
+| T-06 | type 異常 | 相互再帰（非減少エッジあり） | `E-TOTAL` + `reason=non_decreasing_argument` | language-spec §0/§7 |
 | T-07 | type 正常 | `let` alias 経由の strict subterm 再帰 | 成功 | language-spec §7 |
 | T-08 | type 正常 | ネスト `match` 下での strict subterm 再帰 | 成功 | language-spec §7 |
 | T-09 | type 正常 | 複数 ADT 引数のうち 1 つが減少する再帰 | 成功 | language-spec §7 |
@@ -47,7 +49,7 @@
 | C-17 | CLI 正常 | `lint --semantic-dup`（探索量差分あり同値 assert） | `confidence` が探索量に応じて増加 | language-spec §10 |
 | C-18 | CLI 正常 | `lint --semantic-dup`（function 型パラメータ defn） | `L-DUP-MAYBE` を返却 | language-spec §10 |
 | C-19 | CLI 正常 | `lint --semantic-dup`（深い再帰 defn） | `L-DUP-SKIP-EVAL-DEPTH` warning | language-spec §10 |
-| C-20 | CLI 異常 | `fmt` + selfdoc form | `E-FMT-SELFDOC-UNSUPPORTED` | language-spec §2/§9 |
+| C-20 | CLI 正常 | `fmt` + selfdoc form | exit 0 + selfdoc form 保持整形 | language-spec §2/§9 |
 | C-21 | CLI 異常 | `selfdoc` 設定ファイル欠如 | exit 2 + テンプレ出力 | language-spec §2 |
 | C-22 | CLI 正常 | `selfdoc --format json` | `selfdoc.generated.dtl` + `spec.json` + `proof-trace.json` + `doc-index.json` | language-spec §2/§8 |
 | C-23 | CLI 異常 | `selfdoc` 参照欠落 | `E-SELFDOC-REF` fail-fast | language-spec §9 |

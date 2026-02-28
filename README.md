@@ -12,12 +12,14 @@
   - `confidence` はモデルカバレッジ + 反例探索結果に基づく動的スコア（0.00-0.99）
 - format: Surface 形式への正規化整形（in-place / check / stdout）
   - `@context` ブロックを保持し、複数コンテキストでも idempotent 整形
+  - selfdoc form（`project/module/reference/contract/quality-gate`）を保持した整形に対応
 - 有限モデル証明: `assert` と `defn` 契約を universe 上で全探索
 - ドキュメント生成: 証明成功時のみ `spec.md` または `spec.json` と `proof-trace.json` / `doc-index.json` を出力（`--pdf` 対応）
 - `selfdoc`: リポジトリを自動抽出し、自己記述 DSL (`selfdoc.generated.dtl`) を生成して `doc` 束を出力
 - 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は空白対応 + エスケープ解釈）
 - `syntax: auto` は Core/Surface 混在を検知すると `E-SYNTAX-AUTO` を返す
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
+- constructor 同義語は top-level `alias` / Surface `同義語` で定義できる
 
 ## クイックスタート
 ```bash
@@ -79,6 +81,9 @@ python3 ./scripts/generate-glossary-assets.py
 
 ## シンタックスハイライト生成 / VSCode・Cursor 拡張
 ```bash
+# VSIX を生成して Cursor に自動インストール
+make install
+
 # 生成器の依存をインストール
 bun install --cwd tooling/dtl-syntax
 
@@ -100,12 +105,14 @@ bun run --cwd editors/vscode-dtl package
 - TextMate 生成物: `editors/vscode-dtl/syntaxes/dtl.tmLanguage.json`
 - mdBook 用ハイライト: `docs-site/theme/dtl-highlight.js`
 - 拡張定義: `editors/vscode-dtl/package.json`
+- 公開 workflow: `.github/workflows/extension-release.yml`（`VSCE_PAT` / `OVSX_PAT` 必須、`workflow_dispatch` は preflight のみ）
 
 ### 取得元とインストール
-- 現在は VS Code Marketplace / Open VSX 未公開。
-- 取得元はこのリポジトリ（`main`）のみ。
+- `v*` タグ時に GitHub Actions から VS Code Marketplace / Open VSX へ自動公開する。
+- 公開前の検証やローカル利用では、このリポジトリから `.vsix` を生成してインストールできる。
+- Cursor CLI が使える場合は `make install` で VSIX の生成とインストールを一括実行できる。
 - インストール方法:
-  1. `bun run --cwd editors/vscode-dtl package` で `editors/vscode-dtl/dtl-0.1.0.vsix` を生成
+  1. `bun run --cwd editors/vscode-dtl package` で `editors/vscode-dtl/dtl-0.2.0.vsix` を生成
   2. VSCode/Cursor の Extensions 画面で `Install from VSIX...` を選択
   3. 生成した `.vsix` を指定してインストール
 
@@ -179,6 +186,7 @@ dtl fmt <FILE>... [--check] [--stdout]
 - 既定は in-place 整形。
 - `--check` は差分検出のみ。
 - `--stdout` は単一入力時に整形結果を標準出力。
+- selfdoc form を含む入力も保持整形する。
 
 ## 検証コマンド
 ```bash
@@ -198,11 +206,12 @@ cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --no
 - [公開ドキュメントサイト](https://biwakonbu.github.io/domain-typed-lisp/)
 - [ドキュメントサイト目次（mdBook）](docs-site/src/SUMMARY.md)
 - [利用例カタログ](docs-site/src/tutorial/examples-catalog.md)
-- [言語仕様 v0.5](docs/language-spec.md)
-- [言語解説ガイド v0.5](docs/language-guide-ja.md)
-- [エラーコード別トラブルシュート v0.5](docs/troubleshooting-errors-ja.md)
+- [言語仕様 v0.6](docs/language-spec.md)
+- [言語解説ガイド v0.6](docs/language-guide-ja.md)
+- [エラーコード別トラブルシュート v0.6](docs/troubleshooting-errors-ja.md)
+- [バージョニング方針 v0.6](docs/versioning-policy.md)
 - [v0.2 アーキテクチャ](docs/architecture-v0.2.md)
-- [v0.2 移行ガイド（v0.4 追補）](docs/migration-v0.2.md)
+- [v0.2 移行ガイド（v0.6 追補）](docs/migration-v0.2.md)
 - [自己証明判定基準（厳密）](docs/self-proof-criteria.md)
 - [検証計画](docs/verification-plan.md)
 - [テストマトリクス](docs/test-matrix.md)

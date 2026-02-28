@@ -1,17 +1,17 @@
-# v0.1.x -> v0.2 移行ガイド（v0.4 追補）
+# v0.1.x -> v0.2 移行ガイド（v0.6 追補）
 
 ## 1. 破壊的変更
 - CLI が `check` / `prove` / `doc` に分離された。
 - `lint` / `fmt` サブコマンドが追加された。
 - 関数再帰の規則が変更された。
-  - 相互再帰は `E-TOTAL` で禁止。
-  - 自己再帰は「tail position + ADT 引数の構造減少」の場合のみ許可。
+  - 自己再帰・相互再帰ともに、SCC 内の各再帰エッジで「tail position + ADT 引数の構造減少」を満たす場合のみ許可。
 - `data` の再帰定義（例: `(data List (nil) (cons Symbol List))`）を許可。
 - `Symbol` と `Domain` の暗黙互換を廃止。
 - `match` は網羅必須、到達不能分岐は `E-MATCH`。
 - 証明実行には `universe` 宣言が必要（不足時 `E-PROVE`）。
 - 構文モードが `core/surface` の二層になった（先頭 `; syntax: core|surface|auto`）。
 - `syntax:auto` 判定で Core/Surface が同一ファイル混在すると `E-SYNTAX-AUTO` になる。
+- constructor 同義語は top-level `alias` / Surface `同義語` で定義できる。
 
 ## 2. 置換指針
 
@@ -143,7 +143,7 @@ Core のままでも互換ですが、可読性向上のため Surface へ統一
 
 ## 4. よくあるエラー
 - `E-TYPE`: constructor 呼び出し漏れ（`read` ではなく `(read)`）。
-- `E-TOTAL`: 非構造再帰（非 tail / 非減少）または相互再帰。
+- `E-TOTAL`: 非構造再帰（非 tail / 非減少）。
 - `E-MATCH`: `match` の分岐不足 or 到達不能分岐。
 - `E-PROVE`: `universe` 未宣言、または反例あり。
 

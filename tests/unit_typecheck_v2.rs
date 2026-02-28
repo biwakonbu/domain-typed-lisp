@@ -70,7 +70,7 @@ fn typecheck_rejects_non_decreasing_recursive_call() {
 }
 
 #[test]
-fn typecheck_rejects_mutual_recursion() {
+fn typecheck_rejects_mutual_recursion_without_decrease() {
     let src = r#"
         (data Nat (z) (s Nat))
         (defn f ((n Nat)) Bool (g n))
@@ -80,9 +80,49 @@ fn typecheck_rejects_mutual_recursion() {
     let program = parse_program(src).expect("parse");
     let errs = check_program(&program).expect_err("should fail");
     let diag = first_totality_error(&errs);
-    assert!(diag.message.contains("mutual recursion"));
-    assert_eq!(diag.reason(), Some("mutual_recursion"));
-    assert_eq!(diag.arg_indices(), None);
+    assert!(diag.message.contains("f -> g"));
+    assert_eq!(diag.reason(), Some("non_decreasing_argument"));
+    assert_eq!(diag.arg_indices(), Some(&[1][..]));
+}
+
+#[test]
+fn typecheck_accepts_mutual_recursion_with_structural_decrease() {
+    let src = r#"
+        (data Nat (z) (s Nat))
+        (defn f ((n Nat)) Bool
+          (match n
+            ((z) true)
+            ((s m) (g m))))
+        (defn g ((n Nat)) Bool
+          (match n
+            ((z) true)
+            ((s m) (f m))))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let report = check_program(&program).expect("should pass");
+    assert_eq!(report.errors, 0);
+}
+
+#[test]
+fn typecheck_rejects_mutual_recursion_when_edge_is_non_tail() {
+    let src = r#"
+        (data Nat (z) (s Nat))
+        (defn f ((n Nat)) Bool
+          (match n
+            ((z) true)
+            ((s m) (if (g m) true false))))
+        (defn g ((n Nat)) Bool
+          (match n
+            ((z) true)
+            ((s m) (f m))))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let errs = check_program(&program).expect_err("should fail");
+    let diag = first_totality_error(&errs);
+    assert_eq!(diag.reason(), Some("non_tail_recursive_call"));
+    assert!(diag.message.contains("f -> g"));
 }
 
 #[test]

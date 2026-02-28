@@ -18,3 +18,4 @@
 - [運用](./operations/index.md)
   - [HTML 生成とローカル確認](./operations/local-build.md)
   - [GitHub Pages 運用](./operations/github-pages.md)
+  - [拡張公開フロー](./operations/extension-release.md)

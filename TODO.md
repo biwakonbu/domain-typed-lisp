@@ -1,6 +1,6 @@
 # TODO (v0.4)
 
-最終更新: 2026-02-23
+最終更新: 2026-02-27
 
 残件: 0
 
@@ -26,6 +26,14 @@
 - [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings` を通す（`collapsible_if`/`manual_is_multiple_of` 対応 + `result_large_err` 方針を crate 属性で明示）。
 - [x] `--semantic-dup` で function 型パラメータを含む `defn` の同値比較を可能にする（有限関数モデル列挙 + `defn` 評価器の function 値対応）。
 - [x] `--semantic-dup` の `defn` 同値評価で深い再帰を安全に扱えるようにする（深さ上限を適応化し、`L-DUP-SKIP-EVAL-DEPTH` で可視化）。
+- [x] `selfdoc` の参照欠落 fail-fast 契約で `E-SELFDOC-REF` と欠落参照先の stderr 表示を統合テストで固定する。
+
+## P4（v0.6 候補）
+- [x] 相互再帰を条件付きで許可する停止性検査を導入する（SCC 単位の構造減少条件を仕様化）。
+- [x] 同義語 alias 機能を導入する（constructor 正規名ポリシーとの整合を定義）。
+- [x] `fmt` で selfdoc form を保持した再整形をサポートする（現状 `E-FMT-SELFDOC-UNSUPPORTED`）。
+- [x] 言語仕様バージョン（v0.x）と crate バージョン（SemVer）の対応方針を明文化する。
+- [x] VS Code Marketplace / Open VSX 公開フローを整備する（CI・配布手順・README 反映）。
 
 ## Archive: v0.2（完了済み）
 - [x] `check/prove/doc` を CI 必須ジョブに反映する。

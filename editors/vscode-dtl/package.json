@@ -2,11 +2,11 @@
   "name": "dtl",
   "displayName": "DTL Syntax",
   "description": "Syntax highlighting for domain-typed-lisp (.dtl)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "biwakonbu",
   "license": "MIT",
   "engines": {
-    "vscode": "^1.109.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Programming Languages"
@@ -24,7 +24,9 @@
   ],
   "scripts": {
     "package": "bunx @vscode/vsce package --no-dependencies",
-    "package:out": "bunx @vscode/vsce package --no-dependencies --out dtl.vsix"
+    "package:out": "bunx @vscode/vsce package --no-dependencies --out dtl.vsix",
+    "publish:vsce": "bunx @vscode/vsce publish --no-dependencies",
+    "publish:ovsx": "bunx ovsx publish"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.6.2"

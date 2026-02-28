@@ -506,7 +506,7 @@ fn cli_doc_pdf_gracefully_degrades_without_pandoc() {
 }
 
 #[test]
-fn cli_fmt_rejects_selfdoc_forms() {
+fn cli_fmt_accepts_selfdoc_forms_and_preserves_shape() {
     let dir = tempdir().expect("tempdir");
     let src = dir.path().join("selfdoc.dtl");
     fs::write(
@@ -519,12 +519,9 @@ fn cli_fmt_rejects_selfdoc_forms() {
     .expect("write");
 
     let mut cmd = cargo_bin_cmd!("dtl");
-    cmd.arg("fmt")
-        .arg(&src)
-        .arg("--check")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED"));
+    cmd.arg("fmt").arg(&src).assert().success();
+    let rendered = fs::read_to_string(&src).expect("read");
+    assert!(rendered.contains("(プロジェクト :名前 \"dtl\" :概要 \"self\")"));
 }
 
 #[test]
@@ -547,7 +544,7 @@ fn cli_fmt_accepts_contract_like_identifiers_without_selfdoc_tags() {
 }
 
 #[test]
-fn cli_fmt_rejects_selfdoc_form_when_tag_starts_on_next_line() {
+fn cli_fmt_accepts_selfdoc_form_when_tag_starts_on_next_line() {
     let dir = tempdir().expect("tempdir");
     let src = dir.path().join("selfdoc_multiline.dtl");
     fs::write(
@@ -563,12 +560,10 @@ fn cli_fmt_rejects_selfdoc_form_when_tag_starts_on_next_line() {
     .expect("write");
 
     let mut cmd = cargo_bin_cmd!("dtl");
-    cmd.arg("fmt")
-        .arg(&src)
-        .arg("--check")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("E-FMT-SELFDOC-UNSUPPORTED"));
+    cmd.arg("fmt").arg(&src).assert().success();
+    let rendered = fs::read_to_string(&src).expect("read");
+    assert!(rendered.contains("(契約"));
+    assert!(rendered.contains(":名前 \"cli::check\""));
 }
 
 #[test]

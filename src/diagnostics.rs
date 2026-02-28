@@ -100,7 +100,7 @@ pub fn hint_for_code(code: &str) -> Option<&'static str> {
             Some("Refinement の前提事実・規則を追加し、含意が導出可能か確認してください。")
         }
         "E-TOTAL" => Some(
-            "再帰は tail position かつ ADT 引数の構造減少が必要です。相互再帰は許可されません。",
+            "再帰は tail position かつ ADT 引数の構造減少が必要です。相互再帰は SCC 内の全再帰エッジで同条件を満たす場合のみ許可されます。",
         ),
         "E-DATA" => Some("data 宣言の重複・再帰・constructor の整合性を確認してください。"),
         "E-MATCH" => Some("match の網羅性・到達不能分岐・パターン型整合性を確認してください。"),

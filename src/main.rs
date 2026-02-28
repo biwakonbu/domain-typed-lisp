@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
-use std::sync::OnceLock;
 use std::{collections::HashSet, fmt::Write};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -761,13 +760,6 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
                 return 1;
             }
         };
-        if contains_selfdoc_form(&src) {
-            eprintln!(
-                "{}: E-FMT-SELFDOC-UNSUPPORTED: selfdoc form は fmt 対象外です",
-                file.display()
-            );
-            return 1;
-        }
         let formatted = match format_source(&src, FormatOptions::default()) {
             Ok(rendered) => rendered,
             Err(diags) => {
@@ -793,17 +785,6 @@ fn run_fmt(files: &[PathBuf], check: bool, stdout: bool) -> i32 {
     }
 
     if check && has_diff { 1 } else { 0 }
-}
-
-fn contains_selfdoc_form(src: &str) -> bool {
-    static SELF_DOC_FORM_RE: OnceLock<regex::Regex> = OnceLock::new();
-    let pattern = SELF_DOC_FORM_RE.get_or_init(|| {
-        regex::Regex::new(
-            r"\(\s*(?:project|module|reference|contract|quality-gate|プロジェクト|モジュール|参照|契約|品質ゲート)\s*:",
-        )
-        .expect("valid selfdoc regex")
-    });
-    pattern.is_match(src)
 }
 
 fn as_doc_bundle_format(format: DocFormat) -> DocBundleFormat {
@@ -945,6 +926,7 @@ fn render_cycle(stack: &[PathBuf], target: &Path) -> String {
 
 fn merge_program(dst: &mut Program, src: Program) {
     dst.imports.extend(src.imports);
+    dst.aliases.extend(src.aliases);
     dst.sorts.extend(src.sorts);
     dst.data_decls.extend(src.data_decls);
     dst.relations.extend(src.relations);

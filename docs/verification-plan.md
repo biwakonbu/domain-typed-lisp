@@ -1,4 +1,4 @@
-# 検証計画（v0.5）
+# 検証計画（v0.6）
 
 ## テスト戦略
 - unit
@@ -6,10 +6,10 @@
   - parser: selfdoc Surface（`project/module/reference/contract/quality-gate`）デシュガ
   - parser: quoted Atom escape（`\\`/`\"`/`\n`/`\t`/`\r`）境界
   - resolve: constructor 解決、再帰 ADT 許容、universe 整合
-  - typecheck: 構造再帰判定（tail + strict subterm）/ 相互再帰拒否 (`E-TOTAL`)、`match` 網羅/到達不能 (`E-MATCH`)
+  - typecheck: 構造再帰判定（tail + strict subterm）/ SCC 内エッジ検査（相互再帰を条件付き許可） (`E-TOTAL`)、`match` 網羅/到達不能 (`E-MATCH`)
   - lint: `L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH` / `L-UNUSED-DECL`
   - fmt: in-place / `--check` / `--stdout` 契約
-  - fmt: selfdoc form 入力の `E-FMT-SELFDOC-UNSUPPORTED` 契約
+  - fmt: selfdoc form を保持した整形契約
   - logic_engine: ADT 構造値の導出と一致判定
   - prover: 有限モデル全探索、反例最小化、証跡生成
 - integration

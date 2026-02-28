@@ -1,9 +1,9 @@
-# エラーコード別トラブルシュート（v0.5）
+# エラーコード別トラブルシュート（v0.6）
 
-この文書は `dtl` v0.5 の主要エラーコードと lint warning について、原因と復旧手順を運用視点で整理したものです。
+この文書は `dtl` v0.6 の主要エラーコードと lint warning について、原因と復旧手順を運用視点で整理したものです。
 
 ## 1. 対象バージョン
-- DSL 仕様: v0.5（`docs/language-spec.md` 準拠）
+- DSL 仕様: v0.6（`docs/language-spec.md` 準拠）
 - 実装: `dtl` 本体（Rust, `rust-toolchain.toml` は `1.93.0`）
 
 ## 2. 使い方
@@ -133,17 +133,17 @@
 ### 6.1 典型症状
 - `recursive function is not in tail position`
 - `recursive function is not structurally decreasing`
-- `mutual recursion is not allowed`
+- `recursive call is not structurally decreasing in f -> g`
 
 ### 6.2 主な原因
 - 再帰呼び出しが tail position にない
 - `match` 分解した部分値ではなく、元引数や非減少式を再帰に渡している
-- 相互再帰（`f -> g -> f`）を使っている
+- 相互再帰の一部エッジで構造減少条件を満たしていない
 
 ### 6.3 確認手順
 1. 再帰呼び出しが式の最終位置にあるかを確認する（`if` 条件式や引数式内は非 tail）。
 2. ADT 引数について、`match` で分解した部分値（例: `(s m)` の `m`）を渡しているか確認する。
-3. call graph を確認し、再帰が単一関数の自己再帰に閉じているか確認する。
+3. call graph の SCC 内エッジ（`caller -> callee`）ごとに 1,2 を満たすか確認する。
 
 ### 6.4 最小修正例（非減少 -> 減少）
 
@@ -327,14 +327,14 @@
 
 ---
 
-## 14. `E-FMT-SELFDOC-UNSUPPORTED` / `E-SELFDOC-*`
+## 14. selfdoc form / `E-SELFDOC-*`
 
-### 14.1 `E-FMT-SELFDOC-UNSUPPORTED`
-- 症状: `dtl fmt` 実行時に selfdoc form を含む入力で即時失敗する。
-- 原因: selfdoc form は parser フロントで `fact` 群へデシュガされるため、元フォームを保持した再整形をサポートしない。
+### 14.1 selfdoc form の `fmt`
+- 症状: selfdoc form を含む入力で整形後に意図しない差分が出る。
+- 原因: selfdoc form はタグ付き構文のため、改行・インデントを統一すると差分が発生する。
 - 対処:
-1. `selfdoc.generated.dtl` に対して `fmt` を適用しない。
-2. selfdoc の更新は `dtl selfdoc ...` で再生成する。
+1. `dtl fmt` を実行して整形結果を確定する。
+2. selfdoc の更新が必要な場合は `dtl selfdoc ...` を再実行する。
 
 ### 14.2 `E-SELFDOC-CONFIG`
 - 症状: 設定ファイル不在、TOML 構文不正、category 不正で失敗する。

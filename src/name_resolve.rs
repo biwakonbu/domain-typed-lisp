@@ -10,7 +10,294 @@ struct ConstructorSig {
     arity: usize,
 }
 
+pub fn normalize_program_aliases(program: &Program) -> Result<Program, Vec<Diagnostic>> {
+    if program.aliases.is_empty() {
+        return Ok(program.clone());
+    }
+
+    let constructor_names = program
+        .data_decls
+        .iter()
+        .flat_map(|d| d.constructors.iter().map(|ctor| ctor.name.clone()))
+        .collect::<HashSet<_>>();
+    let relation_names = program
+        .relations
+        .iter()
+        .map(|r| r.name.clone())
+        .collect::<HashSet<_>>();
+    let function_names = program
+        .defns
+        .iter()
+        .map(|f| f.name.clone())
+        .collect::<HashSet<_>>();
+
+    let mut errors = Vec::new();
+    let mut raw_alias_map: HashMap<String, (String, crate::diagnostics::Span)> = HashMap::new();
+    for alias in &program.aliases {
+        if raw_alias_map
+            .insert(
+                alias.alias.clone(),
+                (alias.canonical.clone(), alias.span.clone()),
+            )
+            .is_some()
+        {
+            errors.push(Diagnostic::new(
+                "E-DATA",
+                format!("duplicate alias declaration: {}", alias.alias),
+                Some(alias.span.clone()),
+            ));
+            continue;
+        }
+
+        if constructor_names.contains(&alias.alias) {
+            errors.push(Diagnostic::new(
+                "E-DATA",
+                format!("alias conflicts with constructor: {}", alias.alias),
+                Some(alias.span.clone()),
+            ));
+        }
+        if relation_names.contains(&alias.alias) {
+            errors.push(Diagnostic::new(
+                "E-RESOLVE",
+                format!("alias conflicts with relation: {}", alias.alias),
+                Some(alias.span.clone()),
+            ));
+        }
+        if function_names.contains(&alias.alias) {
+            errors.push(Diagnostic::new(
+                "E-RESOLVE",
+                format!("alias conflicts with function: {}", alias.alias),
+                Some(alias.span.clone()),
+            ));
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    let mut resolved_alias_map: HashMap<String, String> = HashMap::new();
+    for alias in raw_alias_map.keys() {
+        let mut stack = Vec::new();
+        resolve_alias_target(
+            alias,
+            &raw_alias_map,
+            &constructor_names,
+            &mut resolved_alias_map,
+            &mut stack,
+            &mut errors,
+        );
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    let mut normalized = program.clone();
+    for fact in &mut normalized.facts {
+        for term in &mut fact.terms {
+            normalize_logic_term_alias(term, &resolved_alias_map);
+        }
+    }
+    for rule in &mut normalized.rules {
+        for term in &mut rule.head.terms {
+            normalize_logic_term_alias(term, &resolved_alias_map);
+        }
+        normalize_formula_alias(&mut rule.body, &resolved_alias_map);
+    }
+    for assertion in &mut normalized.asserts {
+        for param in &mut assertion.params {
+            normalize_type_alias(&mut param.ty, &resolved_alias_map);
+        }
+        normalize_formula_alias(&mut assertion.formula, &resolved_alias_map);
+    }
+    for universe in &mut normalized.universes {
+        for term in &mut universe.values {
+            normalize_logic_term_alias(term, &resolved_alias_map);
+        }
+    }
+    for defn in &mut normalized.defns {
+        for param in &mut defn.params {
+            normalize_type_alias(&mut param.ty, &resolved_alias_map);
+        }
+        normalize_type_alias(&mut defn.ret_type, &resolved_alias_map);
+        normalize_expr_alias(&mut defn.body, &resolved_alias_map);
+    }
+
+    Ok(normalized)
+}
+
+fn resolve_alias_target(
+    alias: &str,
+    raw_alias_map: &HashMap<String, (String, crate::diagnostics::Span)>,
+    constructor_names: &HashSet<String>,
+    resolved_alias_map: &mut HashMap<String, String>,
+    stack: &mut Vec<String>,
+    errors: &mut Vec<Diagnostic>,
+) -> Option<String> {
+    if let Some(target) = resolved_alias_map.get(alias) {
+        return Some(target.clone());
+    }
+
+    if let Some(pos) = stack.iter().position(|item| item == alias) {
+        let mut cycle = stack[pos..].to_vec();
+        cycle.push(alias.to_string());
+        let (target, span) = raw_alias_map
+            .get(alias)
+            .expect("alias must exist while resolving cycle");
+        let _ = target;
+        errors.push(Diagnostic::new(
+            "E-RESOLVE",
+            format!("alias cycle detected: {}", cycle.join(" -> ")),
+            Some(span.clone()),
+        ));
+        return None;
+    }
+
+    let (direct_target, span) = raw_alias_map.get(alias)?;
+    stack.push(alias.to_string());
+
+    let resolved = if constructor_names.contains(direct_target) {
+        Some(direct_target.clone())
+    } else if raw_alias_map.contains_key(direct_target) {
+        resolve_alias_target(
+            direct_target,
+            raw_alias_map,
+            constructor_names,
+            resolved_alias_map,
+            stack,
+            errors,
+        )
+    } else {
+        errors.push(Diagnostic::new(
+            "E-RESOLVE",
+            format!(
+                "alias canonical constructor is undefined: {} -> {}",
+                alias, direct_target
+            ),
+            Some(span.clone()),
+        ));
+        None
+    };
+
+    stack.pop();
+    if let Some(target) = resolved.clone() {
+        resolved_alias_map.insert(alias.to_string(), target);
+    }
+    resolved
+}
+
+fn normalize_type_alias(ty: &mut Type, alias_map: &HashMap<String, String>) {
+    match ty {
+        Type::Fun(args, ret) => {
+            for arg in args {
+                normalize_type_alias(arg, alias_map);
+            }
+            normalize_type_alias(ret, alias_map);
+        }
+        Type::Refine { base, formula, .. } => {
+            normalize_type_alias(base, alias_map);
+            normalize_formula_alias(formula, alias_map);
+        }
+        Type::Bool | Type::Int | Type::Symbol | Type::Domain(_) | Type::Adt(_) => {}
+    }
+}
+
+fn normalize_formula_alias(formula: &mut Formula, alias_map: &HashMap<String, String>) {
+    match formula {
+        Formula::True => {}
+        Formula::Atom(atom) => {
+            for term in &mut atom.terms {
+                normalize_logic_term_alias(term, alias_map);
+            }
+        }
+        Formula::And(items) => {
+            for item in items {
+                normalize_formula_alias(item, alias_map);
+            }
+        }
+        Formula::Not(inner) => normalize_formula_alias(inner, alias_map),
+    }
+}
+
+fn normalize_logic_term_alias(term: &mut LogicTerm, alias_map: &HashMap<String, String>) {
+    match term {
+        LogicTerm::Ctor { name, args } => {
+            if let Some(canonical) = alias_map.get(name) {
+                *name = canonical.clone();
+            }
+            for arg in args {
+                normalize_logic_term_alias(arg, alias_map);
+            }
+        }
+        LogicTerm::Var(_) | LogicTerm::Symbol(_) | LogicTerm::Int(_) | LogicTerm::Bool(_) => {}
+    }
+}
+
+fn normalize_expr_alias(expr: &mut Expr, alias_map: &HashMap<String, String>) {
+    match expr {
+        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Bool { .. } => {}
+        Expr::Call { name, args, .. } => {
+            if let Some(canonical) = alias_map.get(name) {
+                *name = canonical.clone();
+            }
+            for arg in args {
+                normalize_expr_alias(arg, alias_map);
+            }
+        }
+        Expr::Let { bindings, body, .. } => {
+            for (_, bexpr, _) in bindings {
+                normalize_expr_alias(bexpr, alias_map);
+            }
+            normalize_expr_alias(body, alias_map);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            normalize_expr_alias(cond, alias_map);
+            normalize_expr_alias(then_branch, alias_map);
+            normalize_expr_alias(else_branch, alias_map);
+        }
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            normalize_expr_alias(scrutinee, alias_map);
+            for arm in arms {
+                normalize_pattern_alias(&mut arm.pattern, alias_map);
+                normalize_expr_alias(&mut arm.body, alias_map);
+            }
+        }
+    }
+}
+
+fn normalize_pattern_alias(pattern: &mut Pattern, alias_map: &HashMap<String, String>) {
+    match pattern {
+        Pattern::Ctor { name, args, .. } => {
+            if let Some(canonical) = alias_map.get(name) {
+                *name = canonical.clone();
+            }
+            for arg in args {
+                normalize_pattern_alias(arg, alias_map);
+            }
+        }
+        Pattern::Wildcard { .. }
+        | Pattern::Var { .. }
+        | Pattern::Symbol { .. }
+        | Pattern::Int { .. }
+        | Pattern::Bool { .. } => {}
+    }
+}
+
 pub fn resolve_program(program: &Program) -> Vec<Diagnostic> {
+    let normalized = match normalize_program_aliases(program) {
+        Ok(program) => program,
+        Err(errors) => return errors,
+    };
+    resolve_program_internal(&normalized)
+}
+
+fn resolve_program_internal(program: &Program) -> Vec<Diagnostic> {
     let mut errors = Vec::new();
 
     let mut sort_set = HashSet::new();

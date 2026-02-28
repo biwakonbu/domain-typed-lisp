@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::ast::{Expr, Program};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
-use crate::name_resolve::resolve_program;
+use crate::name_resolve::{normalize_program_aliases, resolve_program};
 use crate::stratify::compute_strata;
 use crate::typecheck::check_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
@@ -183,22 +183,23 @@ pub struct DocBundleOptions {
 }
 
 pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
-    let mut errors = resolve_program(program);
+    let normalized = normalize_program_aliases(program)?;
+    let mut errors = resolve_program(&normalized);
     if !errors.is_empty() {
         return Err(errors);
     }
-    if let Err(mut e) = compute_strata(program) {
+    if let Err(mut e) = compute_strata(&normalized) {
         errors.append(&mut e);
         return Err(errors);
     }
-    if let Err(mut e) = check_program(program) {
+    if let Err(mut e) = check_program(&normalized) {
         errors.append(&mut e);
         return Err(errors);
     }
 
-    let kb = KnowledgeBase::from_program(program)?;
-    let universe_map = build_universe_map(program)?;
-    let obligations = build_obligations(program);
+    let kb = KnowledgeBase::from_program(&normalized)?;
+    let universe_map = build_universe_map(&normalized)?;
+    let obligations = build_obligations(&normalized);
 
     let mut traces = Vec::new();
     for obligation in obligations {

@@ -1,10 +1,11 @@
-# 言語仕様（v0.5）
+# 言語仕様（v0.6）
 
 ## 0. 設計原則
 - 本言語はドメイン整合性検証専用の DSL であり、汎用計算系ではない。
 - 言語内計算は純粋（副作用なし）・非破壊であり、外部状態に依存しない。
-- 関数は全域性を要求する。v0.5 でも自己再帰は条件付き許可、相互再帰は禁止する。
+- 関数は全域性を要求する。v0.6 では SCC 単位で再帰を判定し、全再帰エッジで構造減少を満たす場合のみ相互再帰を許可する。
 - 構文は Core（英語キーワード）と Surface（タグ付き可読構文）の二層で提供し、同一 AST に収束する。
+- 言語仕様バージョンと crate SemVer の対応は `docs/versioning-policy.md` に従う。
 
 ## 1. 形式
 - S 式のみを受け付ける（Core/Surface ともに括弧構造を維持）。
@@ -18,7 +19,7 @@
 
 ### 1.1 Atom 正規化境界（引用符・エスケープ）
 - `"` で始まり `"` で終わる Atom は quoted Atom とみなし、NFC 正規化しない。
-- quoted Atom は v0.5 で文字列リテラルとして扱い、`\\` / `\"` / `\n` / `\t` / `\r` を解釈する。
+- quoted Atom は v0.6 で文字列リテラルとして扱い、`\\` / `\"` / `\n` / `\t` / `\r` を解釈する。
 - quoted Atom 内の空白・`;`・括弧はトークン境界として分割されない。
 - 未対応エスケープは `E-PARSE` で失敗する。
 - `import` は quoted Atom の先頭/末尾 `"` を除去した値（エスケープ展開後）を path として扱う。
@@ -43,6 +44,7 @@
 - `dtl fmt <FILE>... [--check] [--stdout]`
   - AST 正規化 + Surface 形式レンダリングを行う。既定は in-place 更新。
   - `; @context:` をブロック単位で保持し、複数コンテキストでも安定整形（idempotent）を保証する。
+  - selfdoc form（`project/module/reference/contract/quality-gate`）を保持した整形をサポートする。
 
 ### 2.1 diagnostics（`--format json`）
 - エラー時は `status = "error"` と `diagnostics` 配列を返す。
@@ -51,7 +53,7 @@
   - 複数ファイル入力: 当該定義を含むファイル
   - `import` 利用時: import 先を含む実ファイル
 - `E-TOTAL` には機械可読フィールドを付与する。
-  - `reason`: 停止性違反カテゴリ（`mutual_recursion` / `non_tail_recursive_call` / `recursive_call_arity_mismatch` / `no_adt_parameter` / `non_decreasing_argument`）
+  - `reason`: 停止性違反カテゴリ（`non_tail_recursive_call` / `recursive_call_arity_mismatch` / `no_adt_parameter` / `non_decreasing_argument`）
   - `arg_indices`: `reason = non_decreasing_argument` の場合のみ出力。構造減少を要求した引数位置（1始まり）。
 - `lint --format json` は `diagnostics[].severity/lint_code/category/confidence` を返す。
 
@@ -62,55 +64,66 @@
 (import "relative/path.dtl")
 ```
 
-### 3.2 sort
+### 3.2 alias
+```dtl
+(alias 閲覧 read)
+```
+
+Surface:
+
+```dtl
+(同義語 :別名 閲覧 :正規 read)
+```
+
+### 3.3 sort
 ```dtl
 (sort Subject)
 ```
 
-### 3.3 data（単相・再帰許可）
+### 3.4 data（単相・再帰許可）
 ```dtl
 (data Action
   (read)
   (write))
 ```
 
-### 3.4 relation
+### 3.5 relation
 ```dtl
 (relation can-access (Subject Resource Action))
 ```
 
-### 3.5 fact
+### 3.6 fact
 ```dtl
 (fact can-access alice doc1 (read))
 ```
 
-### 3.6 rule
+### 3.7 rule
 ```dtl
 (rule (can-access ?u ?r (read))
       (and (has-role ?u admin)
            (resource-public ?r)))
 ```
 
-### 3.7 assert
+### 3.8 assert
 ```dtl
 (assert policy-consistency ((u Subject))
   (not (and (allowed u)
             (not (allowed u)))))
 ```
 
-### 3.8 universe（有限モデル境界）
+### 3.9 universe（有限モデル境界）
 ```dtl
 (universe Subject ((alice) (bob)))
 ```
 
-### 3.9 defn
+### 3.10 defn
 ```dtl
 (defn can-read ((u Subject) (r Resource))
   (Refine b Bool (can-access u r (read)))
   (can-access u r (read)))
 ```
 
-### 3.10 Surface（タグ付き）例
+### 3.11 Surface（タグ付き）例
 ```dtl
 ; syntax: surface
 (型 主体)
@@ -122,7 +135,7 @@
                  (契約登録 ?契約ID)))
 ```
 
-### 3.11 selfdoc Surface（タグ付き）例
+### 3.12 selfdoc Surface（タグ付き）例
 ```dtl
 ; syntax: surface
 (プロジェクト :名前 "domain-typed-lisp" :概要 "自己記述 DSL")
@@ -170,17 +183,16 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 7. 検証意味論
 - `check`
-  - 自己再帰は次の条件を満たす場合のみ許可し、それ以外は `E-TOTAL`。
+  - 再帰（自己再帰/相互再帰）は SCC 単位で判定し、SCC 内の各再帰エッジ（`caller -> callee`）が次を満たす場合のみ許可する。
     - 再帰呼び出しが tail position にある。
-    - 少なくとも 1 つの ADT 引数が strict subterm（`match` 分解で得た部分値）に減少している。
-  - 相互再帰（SCC サイズ > 1）は `E-TOTAL`。
+    - callee の ADT 引数位置の少なくとも 1 つが、caller の ADT パラメータ由来 strict subterm に減少している。
   - `match` は網羅必須・到達不能分岐検出（`E-MATCH`）。
   - `Symbol` と `Domain` の暗黙互換は行わない。
   - 意味固定ポリシー:
     - `data` constructor を業務語彙の閉集合として利用する（正規名強制）。
     - `sort` は開集合として扱う。
     - 概念変更（v1/v2 差分や外部連携差分）は型を分離し、`defn` で明示変換する。
-    - 同義語 alias 機能は v0.5 でも提供しない。
+    - constructor 同義語は top-level `alias`（Surface: `同義語`）で定義し、内部では正規名へ正規化する。
 - `prove`
   - 証明義務:
     - `defn` の戻り値 Refinement 含意
@@ -201,7 +213,7 @@ term = var | symbol | int | bool | (Ctor term*)
   - `spec.json`
   - `proof-trace.json`
   - `doc-index.json`
-- `spec.json` は v0.5 で `profile` / `summary` / `self_description` を必須で持つ。
+- `spec.json` は v0.6 で `profile` / `summary` / `self_description` を必須で持つ。
 - `doc-index.json` は `schema_version = "2.0.0"` で、`profile` / `intermediate.dsl` / `pdf` を持つ。
 - `selfdoc --out DIR` は上記に加え `selfdoc.generated.dtl` を出力する。
 - 未証明義務が 1 つでもある場合、`doc` は失敗する。
@@ -215,11 +227,11 @@ term = var | symbol | int | bool | (Ctor term*)
 - `E-STRATIFY`: 層化違反
 - `E-TYPE`: 型エラー
 - `E-ENTAIL`: 含意失敗
-- `E-TOTAL`: 全域性違反（非構造再帰 / 非 tail 再帰 / 相互再帰）
+- `E-TOTAL`: 全域性違反（非構造再帰 / 非 tail 再帰 / ADT 減少不成立）
 - `E-DATA`: `data` 宣言違反（重複・型名衝突・constructor 不整合）
 - `E-MATCH`: `match` 検査違反（非網羅・到達不能・型不整合）
 - `E-PROVE`: 証明失敗 / universe 不備 / 反例検出
-- `E-FMT-SELFDOC-UNSUPPORTED`: selfdoc form に対する `fmt` 非対応
+- `E-FMT-SELFDOC-UNSUPPORTED`: 廃止予定（v0.6 以降は selfdoc form を保持整形）
 - `E-SELFDOC-CONFIG`: selfdoc 設定不正
 - `E-SELFDOC-SCAN`: selfdoc 走査対象不正
 - `E-SELFDOC-CLASSIFY`: selfdoc 分類不正

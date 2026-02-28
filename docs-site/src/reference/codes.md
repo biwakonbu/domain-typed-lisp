@@ -16,7 +16,7 @@
 - `E-TOTAL`: 全域性違反
 - `E-MATCH`: `match` 検査違反
 - `E-PROVE`: 証明失敗 / universe 不備
-- `E-FMT-SELFDOC-UNSUPPORTED`: selfdoc form に対する fmt 非対応
+- `E-FMT-SELFDOC-UNSUPPORTED`: 互換のため予約（v0.6 以降の `fmt` は selfdoc form を保持整形）
 - `E-SELFDOC-*`: selfdoc 設定/走査/分類/参照/契約/quality gate 抽出エラー
 - `E-SELFCHECK`: selfcheck の claim coverage 不足
 

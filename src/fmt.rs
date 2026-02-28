@@ -1,12 +1,13 @@
 use crate::ast::{
-    AssertDecl, DataDecl, Defn, Expr, Fact, ImportDecl, Pattern, Program, RelationDecl, Rule,
-    SortDecl, UniverseDecl,
+    AliasDecl, AssertDecl, DataDecl, Defn, Expr, Fact, ImportDecl, Pattern, Program, RelationDecl,
+    Rule, SortDecl, UniverseDecl,
 };
 use crate::diagnostics::Diagnostic;
 use crate::parser::parse_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 use std::iter::Peekable;
 use std::str::CharIndices;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FormatOptions {
@@ -23,6 +24,9 @@ impl Default for FormatOptions {
 
 pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Diagnostic>> {
     let program = parse_program(src)?;
+    if contains_selfdoc_form(src) {
+        return Ok(src.trim_end().to_string() + "\n");
+    }
 
     let mut out = String::new();
     out.push_str("; syntax: surface\n");
@@ -41,6 +45,7 @@ pub fn format_source(src: &str, options: FormatOptions) -> Result<String, Vec<Di
 #[derive(Debug, Clone, Copy)]
 enum TopLevelKind {
     Import,
+    Alias,
     Sort,
     Data,
     Relation,
@@ -55,6 +60,7 @@ enum TopLevelKind {
 struct ContextAssignments {
     block_names: Vec<String>,
     imports: Vec<Option<usize>>,
+    aliases: Vec<Option<usize>>,
     sorts: Vec<Option<usize>>,
     data_decls: Vec<Option<usize>>,
     relations: Vec<Option<usize>>,
@@ -69,6 +75,7 @@ impl ContextAssignments {
     fn push(&mut self, kind: TopLevelKind, block_idx: Option<usize>) {
         match kind {
             TopLevelKind::Import => self.imports.push(block_idx),
+            TopLevelKind::Alias => self.aliases.push(block_idx),
             TopLevelKind::Sort => self.sorts.push(block_idx),
             TopLevelKind::Data => self.data_decls.push(block_idx),
             TopLevelKind::Relation => self.relations.push(block_idx),
@@ -84,6 +91,7 @@ impl ContextAssignments {
 #[derive(Debug, Default)]
 struct ContextForms {
     imports: Vec<ImportDecl>,
+    aliases: Vec<AliasDecl>,
     sorts: Vec<SortDecl>,
     data_decls: Vec<DataDecl>,
     relations: Vec<RelationDecl>,
@@ -98,6 +106,7 @@ impl ContextForms {
     fn from_program(program: Program) -> Self {
         Self {
             imports: program.imports,
+            aliases: program.aliases,
             sorts: program.sorts,
             data_decls: program.data_decls,
             relations: program.relations,
@@ -111,6 +120,7 @@ impl ContextForms {
 
     fn is_empty(&self) -> bool {
         self.imports.is_empty()
+            && self.aliases.is_empty()
             && self.sorts.is_empty()
             && self.data_decls.is_empty()
             && self.relations.is_empty()
@@ -123,6 +133,8 @@ impl ContextForms {
 
     fn sort_for_render(&mut self) {
         self.imports.sort_by(|a, b| a.path.cmp(&b.path));
+        self.aliases
+            .sort_by(|a, b| a.alias.cmp(&b.alias).then(a.canonical.cmp(&b.canonical)));
         self.sorts.sort_by(|a, b| a.name.cmp(&b.name));
         self.data_decls.sort_by(|a, b| a.name.cmp(&b.name));
         self.relations.sort_by(|a, b| a.name.cmp(&b.name));
@@ -133,6 +145,7 @@ impl ContextForms {
 fn render_with_context_blocks(program: Program, src: &str, out: &mut String) {
     let Program {
         imports,
+        aliases,
         sorts,
         data_decls,
         relations,
@@ -153,6 +166,7 @@ fn render_with_context_blocks(program: Program, src: &str, out: &mut String) {
         .collect::<Vec<_>>();
 
     assign_imports(imports, &assignments.imports, &mut prelude, &mut blocks);
+    assign_aliases(aliases, &assignments.aliases, &mut prelude, &mut blocks);
     assign_sorts(sorts, &assignments.sorts, &mut prelude, &mut blocks);
     assign_data_decls(
         data_decls,
@@ -192,6 +206,7 @@ fn render_with_context_blocks(program: Program, src: &str, out: &mut String) {
 fn canonical_top_level_kind(head: &str) -> Option<TopLevelKind> {
     match head {
         "import" | "インポート" => Some(TopLevelKind::Import),
+        "alias" | "同義語" => Some(TopLevelKind::Alias),
         "sort" | "型" => Some(TopLevelKind::Sort),
         "data" | "データ" => Some(TopLevelKind::Data),
         "relation" | "関係" => Some(TopLevelKind::Relation),
@@ -202,6 +217,17 @@ fn canonical_top_level_kind(head: &str) -> Option<TopLevelKind> {
         "defn" | "関数" => Some(TopLevelKind::Defn),
         _ => None,
     }
+}
+
+fn contains_selfdoc_form(src: &str) -> bool {
+    static SELF_DOC_FORM_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let pattern = SELF_DOC_FORM_RE.get_or_init(|| {
+        regex::Regex::new(
+            r"\(\s*(?:project|module|reference|contract|quality-gate|プロジェクト|モジュール|参照|契約|品質ゲート)\s*:",
+        )
+        .expect("valid selfdoc regex")
+    });
+    pattern.is_match(src)
 }
 
 fn collect_context_assignments(src: &str) -> ContextAssignments {
@@ -322,6 +348,23 @@ fn assign_imports(
             continue;
         }
         prelude.imports.push(item);
+    }
+}
+
+fn assign_aliases(
+    items: Vec<AliasDecl>,
+    contexts: &[Option<usize>],
+    prelude: &mut ContextForms,
+    blocks: &mut [(String, ContextForms)],
+) {
+    for (idx, item) in items.into_iter().enumerate() {
+        if let Some(block_idx) = contexts.get(idx).copied().flatten()
+            && let Some((_, forms)) = blocks.get_mut(block_idx)
+        {
+            forms.aliases.push(item);
+            continue;
+        }
+        prelude.aliases.push(item);
     }
 }
 
@@ -466,6 +509,16 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
         out.push_str(&format!("(インポート \"{}\")\n", import.path));
     }
     if !forms.imports.is_empty() {
+        out.push('\n');
+    }
+
+    for alias in &forms.aliases {
+        out.push_str(&format!(
+            "(同義語 :別名 {} :正規 {})\n",
+            alias.alias, alias.canonical
+        ));
+    }
+    if !forms.aliases.is_empty() {
         out.push('\n');
     }
 
@@ -846,6 +899,14 @@ mod tests {
             Some(TopLevelKind::Import)
         ));
         assert!(matches!(
+            canonical_top_level_kind("alias"),
+            Some(TopLevelKind::Alias)
+        ));
+        assert!(matches!(
+            canonical_top_level_kind("同義語"),
+            Some(TopLevelKind::Alias)
+        ));
+        assert!(matches!(
             canonical_top_level_kind("sort"),
             Some(TopLevelKind::Sort)
         ));
@@ -935,6 +996,7 @@ mod tests {
 
         assert_eq!(assignments.block_names, vec!["prelude", "app"]);
         assert_eq!(assignments.imports, vec![Some(0)]);
+        assert_eq!(assignments.aliases, Vec::<Option<usize>>::new());
         assert_eq!(assignments.sorts, vec![Some(0)]);
         assert_eq!(assignments.data_decls, vec![Some(0)]);
         assert_eq!(assignments.relations, vec![Some(1)]);
@@ -1225,6 +1287,11 @@ mod tests {
                 path: "zeta.dtl".to_string(),
                 span: span(),
             }],
+            aliases: vec![AliasDecl {
+                alias: "閲覧".to_string(),
+                canonical: "read".to_string(),
+                span: span(),
+            }],
             sorts: vec![SortDecl {
                 name: "Subject".to_string(),
                 span: span(),
@@ -1304,6 +1371,7 @@ mod tests {
         let mut rendered = String::new();
         render_forms(&forms, &mut rendered);
         assert!(rendered.contains("(インポート \"zeta.dtl\")"));
+        assert!(rendered.contains("(同義語 :別名 閲覧 :正規 read)"));
         assert!(rendered.contains("(型 Subject)"));
         assert!(rendered.contains("(データ Node :コンストラクタ ((leaf) (cons Int)))"));
         assert!(rendered.contains("(関係 allowed :引数 (Subject))"));
@@ -1315,6 +1383,7 @@ mod tests {
 
         let program = Program {
             imports: forms.imports.clone(),
+            aliases: forms.aliases.clone(),
             sorts: forms.sorts.clone(),
             data_decls: forms.data_decls.clone(),
             relations: forms.relations.clone(),
