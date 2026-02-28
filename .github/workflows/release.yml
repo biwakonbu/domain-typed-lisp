@@ -26,11 +26,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: detect toolchain channel
+        id: toolchain
+        shell: bash
+        run: |
+          channel="$(awk -F'\"' '/^channel = / { print $2 }' rust-toolchain.toml)"
+          if [ -z "$channel" ]; then
+            echo "failed to read toolchain channel from rust-toolchain.toml"
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+      - name: install Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install "${{ steps.toolchain.outputs.channel }}" --profile default
+          rustup target add "${{ matrix.target }}" --toolchain "${{ steps.toolchain.outputs.channel }}"
       - name: build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo +${{ steps.toolchain.outputs.channel }} build --release --target ${{ matrix.target }}
 
       - name: package (unix)
         if: runner.os != 'Windows'
