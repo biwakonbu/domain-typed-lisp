@@ -47,6 +47,8 @@ enum Command {
         out: PathBuf,
         #[arg(long, value_enum, default_value_t = DocFormat::Markdown)]
         format: DocFormat,
+        #[arg(long, value_enum, default_value_t = ProveEngine::Native)]
+        engine: ProveEngine,
         #[arg(long, default_value_t = false)]
         pdf: bool,
     },
@@ -197,8 +199,9 @@ fn main() {
             files,
             out,
             format,
+            engine,
             pdf,
-        } => run_doc(&files, &out, format, pdf),
+        } => run_doc(&files, &out, format, engine, pdf),
         Command::Lint {
             files,
             format,
@@ -330,7 +333,13 @@ fn run_prove(
     if failed { 1 } else { 0 }
 }
 
-fn run_doc(files: &[PathBuf], out: &Path, format: DocFormat, pdf: bool) -> i32 {
+fn run_doc(
+    files: &[PathBuf],
+    out: &Path,
+    format: DocFormat,
+    engine: ProveEngine,
+    pdf: bool,
+) -> i32 {
     let program = match load_program(files) {
         Ok(program) => program,
         Err(diags) => {
@@ -341,7 +350,10 @@ fn run_doc(files: &[PathBuf], out: &Path, format: DocFormat, pdf: bool) -> i32 {
         }
     };
 
-    let trace = match prove_program(&program) {
+    let trace = match match engine {
+        ProveEngine::Native => prove_program(&program),
+        ProveEngine::Reference => prove_program_reference(&program),
+    } {
         Ok(trace) => trace,
         Err(diags) => {
             for d in attach_source_if_missing(diags, files) {

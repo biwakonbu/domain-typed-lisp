@@ -149,6 +149,7 @@ pub fn prove_program_reference(program: &Program) -> Result<ProofTrace, Vec<Diag
     Ok(ProofTrace {
         schema_version: PROOF_TRACE_SCHEMA_VERSION.to_string(),
         profile: "standard".to_string(),
+        engine: "reference".to_string(),
         summary: ProofSummary {
             total,
             proved,

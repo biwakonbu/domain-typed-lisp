@@ -69,5 +69,6 @@
 | C-25 | CLI 正常 | `selfcheck --format json`（coverage 完備） | exit 0 + `status=ok` + `claim_coverage=100%` | language-spec §2/§8 |
 | C-26 | CLI 異常 | `selfcheck`（coverage 不足） | `E-SELFCHECK` + `status=error` | language-spec §2/§9 |
 | C-27 | CLI 異常 | `selfcheck`（証明義務失敗） | `status=error` + failed obligation | language-spec §2/§7/§8 |
-| C-28 | CLI 正常 | `prove --engine reference`（supported fragment） | native と同じ `proof` を返す | language-spec §2/§7 |
+| C-28 | CLI 正常 | `prove --engine reference`（supported fragment） | native と同じ義務結果を返し、`proof.engine=reference` を持つ | language-spec §2/§7 |
 | C-29 | CLI 正常 | `prove --engine reference`（function 型量化あり） | `status=ok` | language-spec §2/§7 |
+| C-30 | CLI 正常 | `doc --engine reference`（function 型量化あり） | `spec.json` / `proof-trace.json` / `doc-index.json` を生成 | language-spec §2/§8 |

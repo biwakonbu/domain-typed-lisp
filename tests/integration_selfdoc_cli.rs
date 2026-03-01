@@ -127,8 +127,9 @@ fn selfdoc_generates_bundle_and_intermediate_dsl() {
     let trace: Value =
         serde_json::from_slice(&fs::read(out.join("proof-trace.json")).expect("read proof trace"))
             .expect("valid proof trace");
-    assert_eq!(trace["schema_version"], "2.1.0");
+    assert_eq!(trace["schema_version"], "2.2.0");
     assert_eq!(trace["profile"], "selfdoc");
+    assert_eq!(trace["engine"], "native");
     assert_eq!(trace["claim_coverage"]["total_claims"], 7);
     assert_eq!(trace["claim_coverage"]["proved_claims"], 7);
 

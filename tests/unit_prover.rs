@@ -18,8 +18,9 @@ fn prove_program_succeeds_and_emits_schema_version() {
 
     let program = parse_program(src).expect("parse");
     let trace = prove_program(&program).expect("prove should succeed");
-    assert_eq!(trace.schema_version, "2.1.0");
+    assert_eq!(trace.schema_version, "2.2.0");
     assert_eq!(trace.profile, "standard");
+    assert_eq!(trace.engine, "native");
     assert_eq!(trace.summary.total, trace.obligations.len());
     assert!(!has_failed_obligation(&trace));
     assert!(trace.obligations.iter().all(|o| o.result == "proved"));

@@ -1,5 +1,5 @@
 use assert_cmd::cargo::cargo_bin_cmd;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::tempdir;
@@ -38,6 +38,71 @@ fn prove_json_success_contract_is_stable() {
         "json mode should not write stderr on success"
     );
     let actual: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn prove_json_reference_engine_contract_is_stable() {
+    let temp = tempdir().expect("tempdir");
+    let src = temp.path().join("reference_ok.dtl");
+    fs::write(
+        &src,
+        r#"
+        (defn witness ((f (-> (Symbol) Bool)) (x Symbol))
+          (Refine b Bool true)
+          true)
+
+        (universe Symbol (alice bob))
+        (universe Bool (true false))
+        "#,
+    )
+    .expect("write fixture");
+
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("prove")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("reference")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    assert!(
+        output.stderr.is_empty(),
+        "json mode should not write stderr on success"
+    );
+    let actual: Value = serde_json::from_slice(&output.stdout).expect("valid json output");
+    let expected = json!({
+        "status": "ok",
+        "proof": {
+            "schema_version": "2.2.0",
+            "profile": "standard",
+            "engine": "reference",
+            "summary": {
+                "total": 1,
+                "proved": 1,
+                "failed": 0
+            },
+            "claim_coverage": {
+                "total_claims": 1,
+                "proved_claims": 1
+            },
+            "obligations": [
+                {
+                    "id": "defn::witness",
+                    "kind": "defn",
+                    "result": "proved",
+                    "valuation": [],
+                    "premises": [],
+                    "derived": []
+                }
+            ]
+        }
+    });
     assert_eq!(actual, expected);
 }
 

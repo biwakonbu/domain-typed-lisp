@@ -12,7 +12,7 @@ use crate::stratify::compute_strata;
 use crate::typecheck::check_program;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
-pub const PROOF_TRACE_SCHEMA_VERSION: &str = "2.1.0";
+pub const PROOF_TRACE_SCHEMA_VERSION: &str = "2.2.0";
 pub const DOC_SPEC_SCHEMA_VERSION: &str = "2.0.0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +25,7 @@ pub enum DocBundleFormat {
 pub struct ProofTrace {
     pub schema_version: String,
     pub profile: String,
+    pub engine: String,
     pub summary: ProofSummary,
     pub claim_coverage: ClaimCoverage,
     pub obligations: Vec<ObligationTrace>,
@@ -308,6 +309,7 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
     Ok(ProofTrace {
         schema_version: PROOF_TRACE_SCHEMA_VERSION.to_string(),
         profile: "standard".to_string(),
+        engine: "native".to_string(),
         summary: ProofSummary {
             total,
             proved,

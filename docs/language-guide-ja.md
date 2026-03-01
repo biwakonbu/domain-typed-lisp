@@ -215,6 +215,9 @@ cargo run -- check examples/customer_contract_ja.dtl --format json
 
 ```bash
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
+
+# 参照意味論で比較したい場合
+cargo run -- prove examples/customer_contract_ja.dtl --format json --engine reference --out out_ja_ref
 ```
 
 この実行で次の 2 つを確認します。
@@ -224,7 +227,7 @@ cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
 `proof-trace.json` の最小確認:
 
 ```bash
-jq '.schema_version, .obligations[] | {id, kind, result}' out_ja/proof-trace.json
+jq '.schema_version, .engine, .obligations[] | {id, kind, result}' out_ja/proof-trace.json
 ```
 
 `result` が `failed` の義務が 1 つでもある場合、`doc` は失敗します。
@@ -235,6 +238,9 @@ Markdown 仕様を出力:
 
 ```bash
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown
+
+# 参照意味論の結果で bundle 化したい場合
+cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_ref --format markdown --engine reference
 
 # PDF も必要な場合（Pandoc 環境）
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown --pdf
@@ -260,8 +266,9 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - `intermediate.dsl` は通常 `null`、`selfdoc` 実行時は `selfdoc.generated.dtl` です。
 
 ### 9.2 `proof-trace.json`
-- `schema_version`: `2.1.0`（トレース契約バージョン）
+- `schema_version`: `2.2.0`（トレース契約バージョン）
 - `profile`: `standard` または `selfdoc`
+- `engine`: `native` または `reference`
 - `summary`: `total/proved/failed` の要約
 - `claim_coverage`: `total_claims/proved_claims`（`selfcheck` では 100% 必須）
 - `obligations[].id`: `defn::...` または `assert::...`

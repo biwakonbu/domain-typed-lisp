@@ -11,6 +11,14 @@ fn example_path(file: &str) -> PathBuf {
         .join(file)
 }
 
+fn proof_without_engine(value: &Value) -> Value {
+    let mut proof = value["proof"].clone();
+    if let Some(object) = proof.as_object_mut() {
+        object.remove("engine");
+    }
+    proof
+}
+
 #[test]
 fn cli_prove_json_writes_trace_file() {
     let dir = tempdir().expect("tempdir");
@@ -44,6 +52,8 @@ fn cli_prove_json_writes_trace_file() {
 
     let value: Value = serde_json::from_slice(&output).expect("json");
     assert_eq!(value["status"], "ok");
+    assert_eq!(value["proof"]["schema_version"], "2.2.0");
+    assert_eq!(value["proof"]["engine"], "native");
     assert!(out_dir.join("proof-trace.json").exists());
 }
 
@@ -81,6 +91,7 @@ fn cli_prove_json_accepts_constructor_alias() {
 
     let value: Value = serde_json::from_slice(&output).expect("json");
     assert_eq!(value["status"], "ok");
+    assert_eq!(value["proof"]["engine"], "native");
     assert!(out_dir.join("proof-trace.json").exists());
 }
 
@@ -138,7 +149,12 @@ fn cli_prove_reference_engine_matches_native_on_supported_input() {
         serde_json::from_slice::<Value>(&output).expect("reference json")
     };
 
-    assert_eq!(native["proof"], reference["proof"]);
+    assert_eq!(native["proof"]["engine"], "native");
+    assert_eq!(reference["proof"]["engine"], "reference");
+    assert_eq!(
+        proof_without_engine(&native),
+        proof_without_engine(&reference)
+    );
 }
 
 #[test]
@@ -199,6 +215,7 @@ fn cli_prove_reference_engine_supports_function_typed_quantifier() {
         .clone();
     let reference: Value = serde_json::from_slice(&reference_output).expect("reference json");
     assert_eq!(reference["status"], "ok");
+    assert_eq!(reference["proof"]["engine"], "reference");
 }
 
 #[test]
@@ -232,6 +249,7 @@ fn cli_prove_returns_error_when_obligation_fails() {
 
     let value: Value = serde_json::from_slice(&output).expect("json");
     assert_eq!(value["status"], "error");
+    assert_eq!(value["proof"]["engine"], "native");
     assert!(
         value["proof"]["obligations"]
             .as_array()
@@ -419,8 +437,9 @@ fn cli_doc_generates_bundle_for_japanese_example() {
         &fs::read(out.join("proof-trace.json")).expect("read japanese proof trace"),
     )
     .expect("valid japanese proof trace");
-    assert_eq!(trace["schema_version"], "2.1.0");
+    assert_eq!(trace["schema_version"], "2.2.0");
     assert_eq!(trace["profile"], "standard");
+    assert_eq!(trace["engine"], "native");
     assert!(
         trace["obligations"]
             .as_array()
@@ -454,6 +473,7 @@ fn cli_prove_and_doc_support_recursive_function_sample() {
 
     let prove_value: Value = serde_json::from_slice(&prove_stdout).expect("valid prove json");
     assert_eq!(prove_value["status"], "ok");
+    assert_eq!(prove_value["proof"]["engine"], "native");
     assert!(
         prove_value["proof"]["obligations"]
             .as_array()
@@ -477,4 +497,56 @@ fn cli_prove_and_doc_support_recursive_function_sample() {
     assert!(doc_out.join("spec.json").exists());
     assert!(doc_out.join("proof-trace.json").exists());
     assert!(doc_out.join("doc-index.json").exists());
+}
+
+#[test]
+fn cli_doc_reference_engine_supports_function_typed_quantifier() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("doc_reference_ok.dtl");
+    let out = dir.path().join("doc_reference_out");
+    fs::write(
+        &src,
+        r#"
+        (defn witness ((f (-> (Symbol) Bool)) (x Symbol))
+          (Refine b Bool true)
+          true)
+
+        (universe Symbol (alice bob))
+        (universe Bool (true false))
+        "#,
+    )
+    .expect("write");
+
+    let mut native_cmd = cargo_bin_cmd!("dtl");
+    native_cmd
+        .arg("doc")
+        .arg(&src)
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .failure();
+
+    let mut reference_cmd = cargo_bin_cmd!("dtl");
+    reference_cmd
+        .arg("doc")
+        .arg(&src)
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("reference")
+        .assert()
+        .success();
+
+    let trace: Value =
+        serde_json::from_slice(&fs::read(out.join("proof-trace.json")).expect("read proof trace"))
+            .expect("valid proof trace");
+    assert_eq!(trace["schema_version"], "2.2.0");
+    assert_eq!(trace["engine"], "reference");
+    assert_eq!(trace["summary"]["failed"], 0);
+    assert!(out.join("spec.json").exists());
+    assert!(out.join("doc-index.json").exists());
 }

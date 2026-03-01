@@ -30,8 +30,9 @@
 - `dtl prove <FILE>... [--format text|json] [--engine native|reference] [--out DIR]`
   - 有限モデル上で証明義務を全探索し、証跡を生成する。
   - `native` は既定エンジン、`reference` は独立参照意味論による experimental エンジン。
-- `dtl doc <FILE>... --out DIR [--format markdown|json]`
+- `dtl doc <FILE>... --out DIR [--format markdown|json] [--engine native|reference]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
+  - `--engine reference` を指定すると、`prove` と同じ参照意味論で `proof-trace.json` を生成する。
 - `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
   - `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を実行し、自己記述成果物を生成する。
   - README または language-spec の `<!-- selfdoc:cli-contracts:start -->` 契約テーブルから CLI 契約を抽出する。
@@ -205,8 +206,8 @@ term = var | symbol | int | bool | (Ctor term*)
 
 ## 8. 生成物
 - `prove --out DIR`:
-  - `proof-trace.json`（`schema_version = "2.1.0"`）
-  - 必須フィールド: `profile`（`standard|selfdoc`）, `summary`（`total/proved/failed`）, `claim_coverage`（`total_claims/proved_claims`）
+  - `proof-trace.json`（`schema_version = "2.2.0"`）
+  - 必須フィールド: `profile`（`standard|selfdoc`）, `engine`（`native|reference`）, `summary`（`total/proved/failed`）, `claim_coverage`（`total_claims/proved_claims`）
 - `doc --out DIR --format markdown`:
   - `spec.md`
   - `proof-trace.json`
