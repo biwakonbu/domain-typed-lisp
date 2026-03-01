@@ -87,7 +87,7 @@
 24. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
-1. 仕様更新（`semantics-core-v0.6.md` / `language-spec` / `formalization-roadmap`）
+1. 仕様更新（`semantics-core-v0.6.md` / `language-spec` / `formalization-roadmap` / `formalization-bootstrap` / `formalization-theorem-inventory`）
 2. reference oracle と curated fixture 追加
 3. differential / metamorphic テスト追加
 4. 実装反映

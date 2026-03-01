@@ -2,7 +2,7 @@
 
 最終更新: 2026-03-01
 
-残件: 2
+残件: 1
 
 ## P5（v0.6 意味論検証）
 - [x] `prove` の `defn Refine` 判定を `formula_from_expr()` 近似から、式の直接評価ベースへ移行する。
@@ -12,7 +12,7 @@
 - [x] recursive `defn Refine` を supported fragment に含めるため、`check_program` の静的意味論と reference oracle を拡張する。
 - [x] function-typed quantified variable を含む `prove` を reference oracle 側でも扱えるようにする。
 - [x] user-facing な比較実行のため、experimental な `dtl prove --engine native|reference` を設計・実装する。
-- [ ] `semantics-core-v0.6.md` の core subset を対象に、Lean / Coq 形式化用の別リポジトリを立ち上げる。
+- [ ] `semantics-core-v0.6.md` の core subset を対象に、Lean / Coq 形式化用の別リポジトリを publish する（bootstrap / theorem inventory は本体 repo 側で整備済み）。
 
 ## P0（v0.4 核）
 - [x] `lint` サブコマンドを追加し、`L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH` / `L-UNUSED-DECL` を実装する。

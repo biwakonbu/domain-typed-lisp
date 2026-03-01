@@ -34,7 +34,7 @@
 | S-02 | semantics differential | ADT fact/rule fixture | production/reference の導出 fact 集合が一致 | semantics-core v0.6 |
 | S-03 | semantics differential | supported fragment の generated `prove` 入力 | obligation の `id/kind/result/valuation/missing_goals` が一致 | semantics-core v0.6 |
 | S-04 | semantics differential | `assert` 失敗 fixture | production/reference とも同じ反例 valuation / missing_goals | semantics-core v0.6 |
-| S-05 | semantics unsupported | recursive `defn Refine` fixture | `check_program` が `E-ENTAIL` または `E-TOTAL` で拒否 | semantics-core v0.6 |
+| S-05 | semantics differential | recursive `defn Refine` fixture | `check_program` の semantic fallback 後に production/reference の obligation 結果が一致 | semantics-core v0.6 |
 | M-01 | metamorphic | fact 順序入替 | `solve_facts` / `prove` 結果不変 | semantics-core v0.6 |
 | M-02 | metamorphic | rule 順序入替 | `solve_facts` / `prove` 結果不変 | semantics-core v0.6 |
 | M-03 | metamorphic | alias 版 / canonical 版 | `prove` 結果不変 | semantics-core v0.6 |

@@ -101,6 +101,7 @@ Value = Symbol(String)
 - `tests/metamorphic_semantics.rs` は順序・alias・alpha-renaming・fmt・import 分割の不変性を確認する。
 - `native` engine は既存の `ProofTrace` 契約を維持しつつ、`recursive defn Refine` の一部を `check_program()` の semantic fallback で通す。
 - `reference` engine は独立 evaluator を用い、function-typed quantified variable を有限関数モデルとして列挙できる。
+- phase3 の形式化引き継ぎ資材は [formalization-bootstrap.md](./formalization-bootstrap.md) と [formalization-theorem-inventory.md](./formalization-theorem-inventory.md) を参照する。
 
 ## phase1 で明示的に対象外
 - parametric ADT
