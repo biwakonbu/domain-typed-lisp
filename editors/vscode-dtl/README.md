@@ -22,8 +22,9 @@ bun run --cwd editors/vscode-dtl package
 
 ## インストール（ローカル）
 
-`v*` タグ時に `.github/workflows/extension-release.yml` から
-VS Code Marketplace / Open VSX へ自動公開します。  
+`v*` タグ時に GitHub Release へ `.vsix` を自動添付します。  
+`VSCE_PAT` / `OVSX_PAT` が設定されている場合のみ、
+`.github/workflows/extension-release.yml` から VS Code Marketplace / Open VSX へ追加公開します。  
 ローカル検証時は、このリポジトリから `.vsix` を生成してインストールしてください。
 
 Cursor CLI を利用できる場合は、リポジトリルートで `make install` を実行すると

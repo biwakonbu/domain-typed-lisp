@@ -62,9 +62,42 @@ jobs:
           name: ${{ matrix.target }}
           path: ${{ matrix.artifact }}
 
+  build-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: verify tag and extension version match
+        run: |
+          RAW_TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$RAW_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "tag must match v<major>.<minor>.<patch>: $RAW_TAG"
+            exit 1
+          fi
+          TAG_VERSION="${RAW_TAG#v}"
+          PKG_VERSION="$(jq -r '.version' editors/vscode-dtl/package.json)"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "tag version (v$TAG_VERSION) and editors/vscode-dtl/package.json version ($PKG_VERSION) must match"
+            exit 1
+          fi
+      - name: generate syntax assets
+        run: |
+          bun install --cwd tooling/dtl-syntax
+          bun run --cwd tooling/dtl-syntax generate
+      - name: package extension
+        run: |
+          bun install --cwd editors/vscode-dtl
+          bun run --cwd editors/vscode-dtl package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-dtl-vsix
+          path: editors/vscode-dtl/dtl-*.vsix
+
   publish:
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - build
+      - build-extension
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -76,3 +109,4 @@ jobs:
             dist/x86_64-unknown-linux-gnu/dtl-x86_64-unknown-linux-gnu.tar.gz
             dist/x86_64-apple-darwin/dtl-x86_64-apple-darwin.tar.gz
             dist/x86_64-pc-windows-msvc/dtl-x86_64-pc-windows-msvc.zip
+            dist/vscode-dtl-vsix/dtl-*.vsix

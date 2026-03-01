@@ -6,7 +6,7 @@
 - `ci.yml`: 品質ゲート + docs + syntax + CLI + bench smoke
 - `docs-site.yml`: docs-site ビルドと GitHub Pages デプロイ
 - `release.yml`: tag (`v*`) トリガーのマルチプラットフォーム成果物配布
-- `extension-release.yml`: tag (`v*`) トリガーの VS Code Marketplace / Open VSX 公開
+- `extension-release.yml`: tag (`v*`) トリガーの VS Code Marketplace / Open VSX 追加公開（token 未設定時は skip）
 
 ## 編集ルール
 - 既存の責務を跨いでジョブを混在させない。

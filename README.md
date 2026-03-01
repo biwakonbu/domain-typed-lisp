@@ -105,10 +105,11 @@ bun run --cwd editors/vscode-dtl package
 - TextMate 生成物: `editors/vscode-dtl/syntaxes/dtl.tmLanguage.json`
 - mdBook 用ハイライト: `docs-site/theme/dtl-highlight.js`
 - 拡張定義: `editors/vscode-dtl/package.json`
-- 公開 workflow: `.github/workflows/extension-release.yml`（`VSCE_PAT` / `OVSX_PAT` 必須、`workflow_dispatch` は preflight のみ）
+- 公開 workflow: `.github/workflows/extension-release.yml`（store publish は `VSCE_PAT` / `OVSX_PAT` がある場合のみ、`workflow_dispatch` は preflight のみ）
 
 ### 取得元とインストール
-- `v*` タグ時に GitHub Actions から VS Code Marketplace / Open VSX へ自動公開する。
+- `v*` タグ時に GitHub Release へ CLI バイナリと `dtl-*.vsix` を自動添付する。
+- `VSCE_PAT` / `OVSX_PAT` が設定されている場合のみ、追加で VS Code Marketplace / Open VSX へ公開する。
 - 公開前の検証やローカル利用では、このリポジトリから `.vsix` を生成してインストールできる。
 - Cursor CLI が使える場合は `make install` で VSIX の生成とインストールを一括実行できる。
 - インストール方法:

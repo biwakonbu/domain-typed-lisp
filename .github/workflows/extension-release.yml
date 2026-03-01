@@ -55,17 +55,17 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: preflight
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - name: skip marketplace publish when secret is absent
+        if: env.VSCE_PAT == ''
+        run: echo "VSCE_PAT is not set; skip VS Code Marketplace publish"
       - name: publish to VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        if: env.VSCE_PAT != ''
         run: |
-          if [ -z "${VSCE_PAT:-}" ]; then
-            echo "VSCE_PAT secret is required"
-            exit 1
-          fi
           bun install --cwd editors/vscode-dtl
           bunx --cwd editors/vscode-dtl @vscode/vsce publish --no-dependencies -p "$VSCE_PAT"
 
@@ -73,16 +73,16 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     needs: preflight
+    env:
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - name: skip Open VSX publish when secret is absent
+        if: env.OVSX_PAT == ''
+        run: echo "OVSX_PAT is not set; skip Open VSX publish"
       - name: publish to Open VSX
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        if: env.OVSX_PAT != ''
         run: |
-          if [ -z "${OVSX_PAT:-}" ]; then
-            echo "OVSX_PAT secret is required"
-            exit 1
-          fi
           bun install --cwd editors/vscode-dtl
           bunx --cwd editors/vscode-dtl ovsx publish --pat "$OVSX_PAT"
