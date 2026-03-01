@@ -182,6 +182,7 @@ term = var | symbol | int | bool | (Ctor term*)
 ```
 
 ## 7. 検証意味論
+- コア意味論と trusted boundary の詳細は [semantics-core-v0.6.md](./semantics-core-v0.6.md) を参照する。
 - `check`
   - 再帰（自己再帰/相互再帰）は SCC 単位で判定し、SCC 内の各再帰エッジ（`caller -> callee`）が次を満たす場合のみ許可する。
     - 再帰呼び出しが tail position にある。

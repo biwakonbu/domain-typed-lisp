@@ -1,0 +1,11 @@
+(data Subject
+  (alice)
+  (bob))
+(relation allowed (Subject))
+(fact allowed (alice))
+(universe Subject ((alice) (bob)))
+(defn can-read ((u Subject))
+  (Refine b Bool (allowed u))
+  (match u
+    ((alice) (allowed u))
+    ((bob) (allowed u))))

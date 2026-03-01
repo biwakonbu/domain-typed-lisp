@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use crate::ast::{Expr, Program};
+use crate::ast::{Defn, Expr, Pattern, Program};
 use crate::diagnostics::{Diagnostic, Span};
 use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
 use crate::name_resolve::{normalize_program_aliases, resolve_program};
@@ -72,9 +72,15 @@ pub struct CounterexampleTrace {
 struct ObligationSpec {
     id: String,
     kind: String,
-    lhs: Formula,
-    rhs: Formula,
+    goal: Formula,
+    body: ObligationBody,
     vars: Vec<QuantifiedVarSpec>,
+}
+
+#[derive(Debug, Clone)]
+enum ObligationBody {
+    Assert,
+    Refine(Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +88,25 @@ struct QuantifiedVarSpec {
     name: String,
     ty: Type,
     span: Span,
+}
+
+#[derive(Debug, Clone)]
+struct ExprEvalResult {
+    value: Value,
+    positive_facts: HashSet<GroundFact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CallKey {
+    name: String,
+    args: Vec<Value>,
+}
+
+struct PremiseEvalContext<'a> {
+    kb: &'a KnowledgeBase,
+    relation_names: &'a HashSet<String>,
+    constructor_names: &'a HashSet<String>,
+    defn_map: &'a HashMap<String, &'a Defn>,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,8 +223,30 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
     }
 
     let kb = KnowledgeBase::from_program(&normalized)?;
+    let derived = solve_facts(&kb).map_err(wrap_as_prove_error)?;
     let universe_map = build_universe_map(&normalized)?;
     let obligations = build_obligations(&normalized);
+    let relation_names = normalized
+        .relations
+        .iter()
+        .map(|r| r.name.clone())
+        .collect::<HashSet<_>>();
+    let constructor_names = normalized
+        .data_decls
+        .iter()
+        .flat_map(|d| d.constructors.iter().map(|c| c.name.clone()))
+        .collect::<HashSet<_>>();
+    let defn_map = normalized
+        .defns
+        .iter()
+        .map(|defn| (defn.name.clone(), defn))
+        .collect::<HashMap<_, _>>();
+    let premise_eval = PremiseEvalContext {
+        kb: &kb,
+        relation_names: &relation_names,
+        constructor_names: &constructor_names,
+        defn_map: &defn_map,
+    };
 
     let mut traces = Vec::new();
     for obligation in obligations {
@@ -207,26 +254,29 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
 
         let mut failed = None;
         for valuation in valuations {
-            let lhs = substitute_formula_values(&obligation.lhs, &valuation);
-            let rhs = substitute_formula_values(&obligation.rhs, &valuation);
-
-            let assumptions = positive_atoms(&lhs)
-                .into_iter()
-                .filter_map(atom_to_ground_fact)
-                .collect::<Vec<_>>();
-            let trial = kb.with_extra_facts(assumptions.clone());
-            let derived = solve_facts(&trial).map_err(wrap_as_prove_error)?;
-
-            if eval_formula(&lhs, &derived) && !eval_formula(&rhs, &derived) {
-                let minimized = minimize_premises(&kb, &lhs, &rhs, &assumptions)?;
+            let goal = substitute_formula_values(&obligation.goal, &valuation);
+            if let Some(premises) = evaluate_obligation_failure(
+                &obligation,
+                &valuation,
+                &goal,
+                &derived,
+                &relation_names,
+                &constructor_names,
+                &defn_map,
+            )? {
+                let minimized = if premises.is_empty() {
+                    premises
+                } else {
+                    minimize_premises(&premise_eval, &obligation, &valuation, &goal, &premises)?
+                };
                 let derived_for_min = solve_facts(&kb.with_extra_facts(minimized.clone()))
                     .map_err(wrap_as_prove_error)?;
-                failed = Some((valuation, minimized, derived_for_min, rhs));
+                failed = Some((valuation, minimized, derived_for_min, goal));
                 break;
             }
         }
 
-        if let Some((valuation, premises, derived, rhs)) = failed {
+        if let Some((valuation, premises, derived, goal)) = failed {
             traces.push(ObligationTrace {
                 id: obligation.id,
                 kind: obligation.kind,
@@ -237,7 +287,7 @@ pub fn prove_program(program: &Program) -> Result<ProofTrace, Vec<Diagnostic>> {
                 counterexample: Some(CounterexampleTrace {
                     valuation: render_valuation(&valuation),
                     premises: render_premises(&premises),
-                    missing_goals: render_missing_goals(&rhs, &derived),
+                    missing_goals: render_missing_goals(&goal, &derived),
                 }),
             });
         } else {
@@ -786,20 +836,10 @@ fn build_universe_map(program: &Program) -> Result<HashMap<String, Vec<Value>>, 
 }
 
 fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
-    let relation_names: HashSet<String> =
-        program.relations.iter().map(|r| r.name.clone()).collect();
-    let constructor_names: HashSet<String> = program
-        .data_decls
-        .iter()
-        .flat_map(|d| d.constructors.iter().map(|c| c.name.clone()))
-        .collect();
-
     let mut obligations = Vec::new();
 
     for defn in &program.defns {
         if let Type::Refine { formula, .. } = &defn.ret_type {
-            let lhs = formula_from_expr(&defn.body, &relation_names, &constructor_names)
-                .unwrap_or(Formula::True);
             let vars = defn
                 .params
                 .iter()
@@ -812,8 +852,8 @@ fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
             obligations.push(ObligationSpec {
                 id: format!("defn::{}", defn.name),
                 kind: "defn".to_string(),
-                lhs,
-                rhs: formula.clone(),
+                goal: formula.clone(),
+                body: ObligationBody::Refine(defn.body.clone()),
                 vars,
             });
         }
@@ -823,8 +863,8 @@ fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
         obligations.push(ObligationSpec {
             id: format!("assert::{}", assertion.name),
             kind: "assert".to_string(),
-            lhs: Formula::True,
-            rhs: assertion.formula.clone(),
+            goal: assertion.formula.clone(),
+            body: ObligationBody::Assert,
             vars: assertion
                 .params
                 .iter()
@@ -840,37 +880,229 @@ fn build_obligations(program: &Program) -> Vec<ObligationSpec> {
     obligations
 }
 
-fn formula_from_expr(
-    expr: &Expr,
+fn evaluate_obligation_failure(
+    obligation: &ObligationSpec,
+    valuation: &HashMap<String, Value>,
+    goal: &Formula,
+    derived: &DerivedFacts,
     relation_names: &HashSet<String>,
     constructor_names: &HashSet<String>,
-) -> Option<Formula> {
-    match expr {
-        Expr::Bool { value, .. } => {
-            if *value {
-                Some(Formula::True)
+    defn_map: &HashMap<String, &Defn>,
+) -> Result<Option<Vec<GroundFact>>, Vec<Diagnostic>> {
+    match &obligation.body {
+        ObligationBody::Assert => {
+            if eval_formula(goal, derived) {
+                Ok(None)
             } else {
-                Some(Formula::Not(Box::new(Formula::True)))
+                Ok(Some(Vec::new()))
             }
         }
-        Expr::Call { name, args, .. } if relation_names.contains(name) => {
-            let mut terms = Vec::new();
-            for arg in args {
-                terms.push(expr_to_logic_term(arg, constructor_names)?);
+        ObligationBody::Refine(body) => {
+            let outcome = evaluate_refine_body(
+                body,
+                valuation,
+                derived,
+                relation_names,
+                constructor_names,
+                defn_map,
+            )?;
+            match outcome.value {
+                Value::Bool(true) if !eval_formula(goal, derived) => {
+                    Ok(Some(outcome.positive_facts.into_iter().collect()))
+                }
+                Value::Bool(_) => Ok(None),
+                other => Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!(
+                        "refine obligation body did not evaluate to Bool: {}",
+                        value_to_string(&other)
+                    ),
+                    None,
+                )]),
             }
-            Some(Formula::Atom(Atom {
-                pred: name.clone(),
-                terms,
-            }))
+        }
+    }
+}
+
+fn evaluate_refine_body(
+    expr: &Expr,
+    valuation: &HashMap<String, Value>,
+    derived: &DerivedFacts,
+    relation_names: &HashSet<String>,
+    constructor_names: &HashSet<String>,
+    defn_map: &HashMap<String, &Defn>,
+) -> Result<ExprEvalResult, Vec<Diagnostic>> {
+    let mut state = ExprEvalState {
+        derived,
+        relation_names,
+        constructor_names,
+        defn_map,
+        cache: HashMap::new(),
+        active_calls: HashSet::new(),
+    };
+    evaluate_expr(expr, valuation, &mut state)
+}
+
+struct ExprEvalState<'a> {
+    derived: &'a DerivedFacts,
+    relation_names: &'a HashSet<String>,
+    constructor_names: &'a HashSet<String>,
+    defn_map: &'a HashMap<String, &'a Defn>,
+    cache: HashMap<CallKey, ExprEvalResult>,
+    active_calls: HashSet<CallKey>,
+}
+
+fn evaluate_expr(
+    expr: &Expr,
+    env: &HashMap<String, Value>,
+    state: &mut ExprEvalState<'_>,
+) -> Result<ExprEvalResult, Vec<Diagnostic>> {
+    match expr {
+        Expr::Var { name, .. } => env
+            .get(name)
+            .cloned()
+            .map(|value| ExprEvalResult {
+                value,
+                positive_facts: HashSet::new(),
+            })
+            .ok_or_else(|| {
+                vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!("unknown variable during expression evaluation: {name}"),
+                    Some(expr.span().clone()),
+                )]
+            }),
+        Expr::Symbol { value, .. } => Ok(ExprEvalResult {
+            value: Value::Symbol(value.clone()),
+            positive_facts: HashSet::new(),
+        }),
+        Expr::Int { value, .. } => Ok(ExprEvalResult {
+            value: Value::Int(*value),
+            positive_facts: HashSet::new(),
+        }),
+        Expr::Bool { value, .. } => Ok(ExprEvalResult {
+            value: Value::Bool(*value),
+            positive_facts: HashSet::new(),
+        }),
+        Expr::Call { name, args, .. } if state.relation_names.contains(name) => {
+            let mut terms = Vec::with_capacity(args.len());
+            let mut positive_facts = HashSet::new();
+            for arg in args {
+                let result = evaluate_expr(arg, env, state)?;
+                positive_facts.extend(result.positive_facts);
+                terms.push(result.value);
+            }
+            let truth = state
+                .derived
+                .facts
+                .get(name)
+                .map(|set| set.contains(&terms))
+                .unwrap_or(false);
+            if truth {
+                positive_facts.insert(GroundFact {
+                    pred: name.clone(),
+                    terms: terms.clone(),
+                });
+            }
+            Ok(ExprEvalResult {
+                value: Value::Bool(truth),
+                positive_facts,
+            })
+        }
+        Expr::Call { name, args, .. } if state.constructor_names.contains(name) => {
+            let mut fields = Vec::with_capacity(args.len());
+            let mut positive_facts = HashSet::new();
+            for arg in args {
+                let result = evaluate_expr(arg, env, state)?;
+                positive_facts.extend(result.positive_facts);
+                fields.push(result.value);
+            }
+            Ok(ExprEvalResult {
+                value: Value::Adt {
+                    ctor: name.clone(),
+                    fields,
+                },
+                positive_facts,
+            })
+        }
+        Expr::Call { name, args, .. } => {
+            let Some(defn) = state.defn_map.get(name) else {
+                return Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!("unknown call target during expression evaluation: {name}"),
+                    Some(expr.span().clone()),
+                )]);
+            };
+            if defn.params.len() != args.len() {
+                return Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!(
+                        "arity mismatch during expression evaluation: {} expected {}, got {}",
+                        name,
+                        defn.params.len(),
+                        args.len()
+                    ),
+                    Some(expr.span().clone()),
+                )]);
+            }
+
+            let mut arg_values = Vec::with_capacity(args.len());
+            let mut arg_facts = HashSet::new();
+            for arg in args {
+                let result = evaluate_expr(arg, env, state)?;
+                arg_facts.extend(result.positive_facts);
+                arg_values.push(result.value);
+            }
+
+            let key = CallKey {
+                name: name.clone(),
+                args: arg_values.clone(),
+            };
+            if let Some(cached) = state.cache.get(&key) {
+                let mut positive_facts = arg_facts;
+                positive_facts.extend(cached.positive_facts.clone());
+                return Ok(ExprEvalResult {
+                    value: cached.value.clone(),
+                    positive_facts,
+                });
+            }
+            if !state.active_calls.insert(key.clone()) {
+                return Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!("recursive evaluation cycle detected in {name}"),
+                    Some(expr.span().clone()),
+                )]);
+            }
+
+            let mut call_env = HashMap::new();
+            for (param, value) in defn.params.iter().zip(arg_values.iter()) {
+                call_env.insert(param.name.clone(), value.clone());
+            }
+            let result = evaluate_expr(&defn.body, &call_env, state)?;
+            state.active_calls.remove(&key);
+            state.cache.insert(key, result.clone());
+
+            let mut positive_facts = arg_facts;
+            positive_facts.extend(result.positive_facts.clone());
+            Ok(ExprEvalResult {
+                value: result.value,
+                positive_facts,
+            })
         }
         Expr::Let { bindings, body, .. } => {
-            let mut subst = HashMap::new();
+            let mut local_env = env.clone();
+            let mut positive_facts = HashSet::new();
             for (name, bexpr, _) in bindings {
-                let term = expr_to_logic_term(bexpr, constructor_names)?;
-                subst.insert(name.clone(), term);
+                let result = evaluate_expr(bexpr, &local_env, state)?;
+                positive_facts.extend(result.positive_facts);
+                local_env.insert(name.clone(), result.value);
             }
-            let base = formula_from_expr(body, relation_names, constructor_names)?;
-            Some(substitute_formula_terms(&base, &subst))
+            let result = evaluate_expr(body, &local_env, state)?;
+            positive_facts.extend(result.positive_facts.clone());
+            Ok(ExprEvalResult {
+                value: result.value,
+                positive_facts,
+            })
         }
         Expr::If {
             cond,
@@ -878,115 +1110,83 @@ fn formula_from_expr(
             else_branch,
             ..
         } => {
-            let then_formula = formula_from_expr(then_branch, relation_names, constructor_names)?;
-            let else_formula = formula_from_expr(else_branch, relation_names, constructor_names)?;
-            if let Some(cond_formula) = formula_from_expr(cond, relation_names, constructor_names) {
-                Some(formula_or(
-                    formula_and(vec![cond_formula.clone(), then_formula]),
-                    formula_and(vec![formula_not(cond_formula), else_formula]),
-                ))
-            } else {
-                Some(formula_or(then_formula, else_formula))
+            let cond_result = evaluate_expr(cond, env, state)?;
+            match cond_result.value {
+                Value::Bool(true) => {
+                    let branch_result = evaluate_expr(then_branch, env, state)?;
+                    let mut positive_facts = cond_result.positive_facts;
+                    positive_facts.extend(branch_result.positive_facts.clone());
+                    Ok(ExprEvalResult {
+                        value: branch_result.value,
+                        positive_facts,
+                    })
+                }
+                Value::Bool(false) => evaluate_expr(else_branch, env, state),
+                other => Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!(
+                        "if condition did not evaluate to Bool: {}",
+                        value_to_string(&other)
+                    ),
+                    Some(cond.span().clone()),
+                )]),
             }
         }
-        Expr::Match { arms, .. } => {
-            if arms.is_empty() {
-                return Some(formula_false());
-            }
-            let mut acc = formula_false();
+        Expr::Match {
+            scrutinee, arms, ..
+        } => {
+            let scrutinee_result = evaluate_expr(scrutinee, env, state)?;
             for arm in arms {
-                let branch = formula_from_expr(&arm.body, relation_names, constructor_names)?;
-                acc = formula_or(acc, branch);
+                let mut branch_env = env.clone();
+                if bind_pattern(&arm.pattern, &scrutinee_result.value, &mut branch_env) {
+                    let branch_result = evaluate_expr(&arm.body, &branch_env, state)?;
+                    let mut positive_facts = scrutinee_result.positive_facts.clone();
+                    positive_facts.extend(branch_result.positive_facts.clone());
+                    return Ok(ExprEvalResult {
+                        value: branch_result.value,
+                        positive_facts,
+                    });
+                }
             }
-            Some(acc)
-        }
-        Expr::Var { .. } | Expr::Symbol { .. } | Expr::Int { .. } | Expr::Call { .. } => None,
-    }
-}
-
-fn formula_false() -> Formula {
-    Formula::Not(Box::new(Formula::True))
-}
-
-fn formula_not(formula: Formula) -> Formula {
-    match formula {
-        Formula::Not(inner) => *inner,
-        other => Formula::Not(Box::new(other)),
-    }
-}
-
-fn formula_and(items: Vec<Formula>) -> Formula {
-    let mut flattened = Vec::new();
-    for item in items {
-        match item {
-            Formula::True => {}
-            Formula::And(parts) => flattened.extend(parts),
-            other => flattened.push(other),
+            Err(vec![Diagnostic::new(
+                "E-PROVE",
+                "match expression had no matching arm during proof evaluation".to_string(),
+                Some(expr.span().clone()),
+            )])
         }
     }
-    match flattened.len() {
-        0 => Formula::True,
-        1 => flattened.into_iter().next().expect("single formula"),
-        _ => Formula::And(flattened),
-    }
 }
 
-fn formula_or(left: Formula, right: Formula) -> Formula {
-    formula_not(formula_and(vec![formula_not(left), formula_not(right)]))
-}
-
-fn expr_to_logic_term(expr: &Expr, constructor_names: &HashSet<String>) -> Option<LogicTerm> {
-    match expr {
-        Expr::Var { name, .. } => Some(LogicTerm::Var(name.clone())),
-        Expr::Symbol { value, .. } => Some(LogicTerm::Symbol(value.clone())),
-        Expr::Int { value, .. } => Some(LogicTerm::Int(*value)),
-        Expr::Bool { value, .. } => Some(LogicTerm::Bool(*value)),
-        Expr::Call { name, args, .. } if constructor_names.contains(name) => {
-            let mut parsed_args = Vec::new();
-            for arg in args {
-                parsed_args.push(expr_to_logic_term(arg, constructor_names)?);
+fn bind_pattern(pattern: &Pattern, value: &Value, env: &mut HashMap<String, Value>) -> bool {
+    match pattern {
+        Pattern::Wildcard { .. } => true,
+        Pattern::Var { name, .. } => match env.get(name) {
+            Some(bound) => bound == value,
+            None => {
+                env.insert(name.clone(), value.clone());
+                true
             }
-            Some(LogicTerm::Ctor {
-                name: name.clone(),
-                args: parsed_args,
-            })
-        }
-        Expr::Call { .. } | Expr::Let { .. } | Expr::If { .. } | Expr::Match { .. } => None,
-    }
-}
-
-fn substitute_formula_terms(formula: &Formula, subst: &HashMap<String, LogicTerm>) -> Formula {
-    match formula {
-        Formula::True => Formula::True,
-        Formula::Atom(atom) => Formula::Atom(Atom {
-            pred: atom.pred.clone(),
-            terms: atom
-                .terms
-                .iter()
-                .map(|t| substitute_term(t, subst))
-                .collect(),
-        }),
-        Formula::And(items) => Formula::And(
-            items
-                .iter()
-                .map(|item| substitute_formula_terms(item, subst))
-                .collect(),
-        ),
-        Formula::Not(inner) => Formula::Not(Box::new(substitute_formula_terms(inner, subst))),
-    }
-}
-
-fn substitute_term(term: &LogicTerm, subst: &HashMap<String, LogicTerm>) -> LogicTerm {
-    match term {
-        LogicTerm::Var(v) => subst
-            .get(v)
-            .cloned()
-            .unwrap_or_else(|| LogicTerm::Var(v.clone())),
-        LogicTerm::Ctor { name, args } => LogicTerm::Ctor {
-            name: name.clone(),
-            args: args.iter().map(|a| substitute_term(a, subst)).collect(),
         },
-        other => other.clone(),
+        Pattern::Symbol {
+            value: expected, ..
+        } => matches!(value, Value::Symbol(actual) if actual == expected),
+        Pattern::Int {
+            value: expected, ..
+        } => matches!(value, Value::Int(actual) if actual == expected),
+        Pattern::Bool {
+            value: expected, ..
+        } => matches!(value, Value::Bool(actual) if actual == expected),
+        Pattern::Ctor { name, args, .. } => match value {
+            Value::Adt { ctor, fields } if ctor == name && fields.len() == args.len() => {
+                for (arg, field) in args.iter().zip(fields.iter()) {
+                    if !bind_pattern(arg, field, env) {
+                        return false;
+                    }
+                }
+                true
+            }
+            _ => false,
+        },
     }
 }
 
@@ -1103,40 +1303,6 @@ fn value_to_logic_term(value: &Value) -> LogicTerm {
     }
 }
 
-fn positive_atoms(formula: &Formula) -> Vec<Atom> {
-    let mut out = Vec::new();
-    collect_positive_atoms(formula, false, &mut out);
-    out
-}
-
-fn collect_positive_atoms(formula: &Formula, neg: bool, out: &mut Vec<Atom>) {
-    match formula {
-        Formula::True => {}
-        Formula::Atom(atom) => {
-            if !neg {
-                out.push(atom.clone());
-            }
-        }
-        Formula::And(items) => {
-            for item in items {
-                collect_positive_atoms(item, neg, out);
-            }
-        }
-        Formula::Not(inner) => collect_positive_atoms(inner, !neg, out),
-    }
-}
-
-fn atom_to_ground_fact(atom: Atom) -> Option<GroundFact> {
-    let mut terms = Vec::new();
-    for term in atom.terms {
-        terms.push(logic_term_to_const_value(&term)?);
-    }
-    Some(GroundFact {
-        pred: atom.pred,
-        terms,
-    })
-}
-
 fn logic_term_to_const_value(term: &LogicTerm) -> Option<Value> {
     match term {
         LogicTerm::Var(_) => None,
@@ -1179,10 +1345,46 @@ fn eval_formula(formula: &Formula, derived: &DerivedFacts) -> bool {
     }
 }
 
+fn obligation_fails_with_premises(
+    ctx: &PremiseEvalContext<'_>,
+    obligation: &ObligationSpec,
+    valuation: &HashMap<String, Value>,
+    goal: &Formula,
+    premises: &[GroundFact],
+) -> Result<bool, Vec<Diagnostic>> {
+    let derived =
+        solve_facts(&ctx.kb.with_extra_facts(premises.to_vec())).map_err(wrap_as_prove_error)?;
+    match &obligation.body {
+        ObligationBody::Assert => Ok(!eval_formula(goal, &derived)),
+        ObligationBody::Refine(body) => {
+            let outcome = evaluate_refine_body(
+                body,
+                valuation,
+                &derived,
+                ctx.relation_names,
+                ctx.constructor_names,
+                ctx.defn_map,
+            )?;
+            match outcome.value {
+                Value::Bool(value) => Ok(value && !eval_formula(goal, &derived)),
+                other => Err(vec![Diagnostic::new(
+                    "E-PROVE",
+                    format!(
+                        "refine obligation body did not evaluate to Bool: {}",
+                        value_to_string(&other)
+                    ),
+                    None,
+                )]),
+            }
+        }
+    }
+}
+
 fn minimize_premises(
-    kb: &KnowledgeBase,
-    lhs: &Formula,
-    rhs: &Formula,
+    ctx: &PremiseEvalContext<'_>,
+    obligation: &ObligationSpec,
+    valuation: &HashMap<String, Value>,
+    goal: &Formula,
     assumptions: &[GroundFact],
 ) -> Result<Vec<GroundFact>, Vec<Diagnostic>> {
     let mut sorted = assumptions.to_vec();
@@ -1190,9 +1392,10 @@ fn minimize_premises(
 
     for size in 0..=sorted.len() {
         let mut search = SubsetSearch {
-            kb,
-            lhs,
-            rhs,
+            ctx,
+            obligation,
+            valuation,
+            goal,
             sorted: &sorted,
             found: None,
         };
@@ -1206,9 +1409,10 @@ fn minimize_premises(
 }
 
 struct SubsetSearch<'a> {
-    kb: &'a KnowledgeBase,
-    lhs: &'a Formula,
-    rhs: &'a Formula,
+    ctx: &'a PremiseEvalContext<'a>,
+    obligation: &'a ObligationSpec,
+    valuation: &'a HashMap<String, Value>,
+    goal: &'a Formula,
     sorted: &'a [GroundFact],
     found: Option<Vec<GroundFact>>,
 }
@@ -1228,9 +1432,13 @@ impl<'a> SubsetSearch<'a> {
                 .iter()
                 .map(|i| self.sorted[*i].clone())
                 .collect::<Vec<_>>();
-            let derived = solve_facts(&self.kb.with_extra_facts(subset.clone()))
-                .map_err(wrap_as_prove_error)?;
-            if eval_formula(self.lhs, &derived) && !eval_formula(self.rhs, &derived) {
+            if obligation_fails_with_premises(
+                self.ctx,
+                self.obligation,
+                self.valuation,
+                self.goal,
+                &subset,
+            )? {
                 self.found = Some(subset);
             }
             return Ok(());

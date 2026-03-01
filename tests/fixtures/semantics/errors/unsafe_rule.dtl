@@ -1,0 +1,4 @@
+(sort X)
+(relation p (X))
+(relation q (X))
+(rule (q ?x) (not (p ?x)))

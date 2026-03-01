@@ -12,6 +12,16 @@
   - fmt: selfdoc form を保持した整形契約
   - logic_engine: ADT 構造値の導出と一致判定
   - prover: 有限モデル全探索、反例最小化、証跡生成
+- differential
+  - reference semantics に対する `logic_engine` 導出 fact 集合の一致検証
+  - reference semantics に対する `prove` obligation (`id/kind/result/valuation/missing_goals`) の一致検証
+  - curated fixture による unsupported in phase1 の明示検証
+- metamorphic
+  - fact / rule / universe 順序不変
+  - alias 正規化不変
+  - alpha-renaming 不変
+  - `fmt` 前後で `prove` 結果不変
+  - import 分割版と単一ファイル版で `prove` 結果不変
 - integration
   - `check/prove/doc` の終了コード・JSON 契約・出力ファイル契約
   - `lint/fmt/doc --pdf` の終了コード・JSON 契約・出力ファイル契約
@@ -30,35 +40,58 @@
 - property
   - 固定点の冪等性・単調性
   - 証明結果の順序不変性
+  - supported fragment の generated program に対する production/reference 一致
+
+## trusted boundary
+- differential verification の入力は parser / alias normalize / resolve / stratify / typecheck 成功済み AST とする。
+- `solve_facts()` / `prove_program()` 自体は信頼境界の外に置き、`tests/support/reference_semantics.rs` の独立実装と照合する。
+- `check_program()` が拒否する入力は phase1 では unsupported として別扱いにする。
+
+## 差異 triage
+- `reference = spec`, `production != reference`
+  - production bug
+  - CI fail
+- `reference != spec`
+  - reference oracle bug
+  - CI fail
+- `spec` が曖昧
+  - `docs/semantics-core-v0.6.md` を先に更新
+- unsupported in phase1
+  - generator から除外
+  - curated fixture で明示的に検証
 
 ## 品質ゲート
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --lib --bins --tests`
-4. `mdbook build docs-site`
-5. `cargo test --test integration_cli`
-6. `cargo test --test e2e_examples`
-7. `cargo test --test integration_lint_fmt_doc_pdf_cli`
-8. `cargo test --test integration_prove_doc_cli`
-9. `cargo test --test integration_prove_json_contract`
-10. `cargo test --test unit_prover`
-11. `cargo test --test property_logic`
-12. `dtl lint examples/customer_contract_ja.dtl --format json --deny-warnings`
-13. `dtl fmt examples/customer_contract_ja.dtl --check`
-14. `dtl check examples/complex_policy_import_entry.dtl --format json`
-15. `dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex`
-16. `dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup`
-17. `dtl selfdoc --repo . --out out_selfdoc --format json`
-18. `dtl selfcheck --repo . --out out_selfcheck --format json`
-19. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
-20. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
-21. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
+4. `cargo test --test differential_logic_engine`
+5. `cargo test --test differential_prover`
+6. `cargo test --test metamorphic_semantics`
+7. `mdbook build docs-site`
+8. `cargo test --test integration_cli`
+9. `cargo test --test e2e_examples`
+10. `cargo test --test integration_lint_fmt_doc_pdf_cli`
+11. `cargo test --test integration_prove_doc_cli`
+12. `cargo test --test integration_prove_json_contract`
+13. `cargo test --test unit_prover`
+14. `cargo test --test property_logic`
+15. `dtl lint examples/customer_contract_ja.dtl --format json --deny-warnings`
+16. `dtl fmt examples/customer_contract_ja.dtl --check`
+17. `dtl check examples/complex_policy_import_entry.dtl --format json`
+18. `dtl prove examples/complex_policy_import_entry.dtl --format json --out out_complex`
+19. `dtl lint examples/semantic_dup_advanced.dtl --format json --semantic-dup`
+20. `dtl selfdoc --repo . --out out_selfdoc --format json`
+21. `dtl selfcheck --repo . --out out_selfcheck --format json`
+22. `cargo bench --bench perf_scaling -- solve_facts/fact_scaling/20 --quick --noplot`
+23. `cargo bench --bench perf_scaling -- solve_facts/rule_scaling/10 --quick --noplot`
+24. `cargo bench --bench perf_scaling -- prove/minimize_counterexample/4 --quick --noplot`
 
 ## 実施順
-1. 仕様更新（language-spec / migration）
-2. テスト追加（失敗確認）
-3. 実装反映
-4. 回帰テスト + 品質ゲート
+1. 仕様更新（`semantics-core-v0.6.md` / `language-spec` / `formalization-roadmap`）
+2. reference oracle と curated fixture 追加
+3. differential / metamorphic テスト追加
+4. 実装反映
+5. 回帰テスト + 品質ゲート
 
 ## 再現性
 - Rust stable toolchain

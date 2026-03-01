@@ -30,6 +30,18 @@
 | PR-01 | prover 正常 | universe 完備 + 真の assert | 全義務 `proved` | language-spec §7 |
 | PR-02 | prover 異常 | assert 失敗 | `result=failed` + 反例 | language-spec §7 |
 | PR-03 | prover 異常 | universe 欠落 | `E-PROVE` | language-spec §7 |
+| S-01 | semantics differential | stratified negation fixture | production/reference の導出 fact 集合が一致 | semantics-core v0.6 |
+| S-02 | semantics differential | ADT fact/rule fixture | production/reference の導出 fact 集合が一致 | semantics-core v0.6 |
+| S-03 | semantics differential | supported fragment の generated `prove` 入力 | obligation の `id/kind/result/valuation/missing_goals` が一致 | semantics-core v0.6 |
+| S-04 | semantics differential | `assert` 失敗 fixture | production/reference とも同じ反例 valuation / missing_goals | semantics-core v0.6 |
+| S-05 | semantics unsupported | recursive `defn Refine` fixture | `check_program` が `E-ENTAIL` または `E-TOTAL` で拒否 | semantics-core v0.6 |
+| M-01 | metamorphic | fact 順序入替 | `solve_facts` / `prove` 結果不変 | semantics-core v0.6 |
+| M-02 | metamorphic | rule 順序入替 | `solve_facts` / `prove` 結果不変 | semantics-core v0.6 |
+| M-03 | metamorphic | alias 版 / canonical 版 | `prove` 結果不変 | semantics-core v0.6 |
+| M-04 | metamorphic | universe 値順序入替 | `prove` 結果不変 | semantics-core v0.6 |
+| M-05 | metamorphic | alpha-renaming | `prove` 結果不変 | semantics-core v0.6 |
+| M-06 | metamorphic | `fmt` 前後 | `prove` 結果不変 | semantics-core v0.6 |
+| M-07 | metamorphic | import 分割版 / 単一版 | CLI `prove --format json` の `proof` が一致 | semantics-core v0.6 |
 | C-01 | CLI 正常 | `check` | exit 0 | language-spec §2 |
 | C-02 | CLI 正常 | `prove --format json --out` | exit 0 + `proof-trace.json` | language-spec §2/§8 |
 | C-03 | CLI 異常 | `prove` 失敗義務 | exit 1 + failed obligation | language-spec §2/§7 |

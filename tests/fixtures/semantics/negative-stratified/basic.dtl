@@ -1,0 +1,8 @@
+(sort X)
+(relation p (X))
+(relation blocked (X))
+(relation q (X))
+(fact p a)
+(fact p b)
+(fact blocked b)
+(rule (q ?x) (and (p ?x) (not (blocked ?x))))

@@ -1,0 +1,13 @@
+(data Action
+  (read)
+  (write))
+(alias 閲覧 read)
+(relation allowed (Action))
+(fact allowed (閲覧))
+(universe Action ((read) (write)))
+(defn alias-check ((a Action))
+  (Refine b Bool (allowed a))
+  (allowed a))
+(assert canonical ((a Action))
+  (not (and (allowed a)
+            (not (allowed a)))))

@@ -1,0 +1,26 @@
+(data Subject
+  (alice)
+  (bob))
+(data SubjectList
+  (nil)
+  (cons Subject SubjectList))
+(relation allowed (Subject))
+(relation allowed-list (SubjectList))
+(fact allowed (alice))
+(fact allowed-list (nil))
+(fact allowed-list (cons (alice) (nil)))
+(fact allowed-list (cons (alice) (cons (alice) (nil))))
+(universe Subject ((alice) (bob)))
+(universe SubjectList (
+  (nil)
+  (cons (alice) (nil))
+  (cons (bob) (nil))
+  (cons (alice) (cons (alice) (nil)))))
+(defn every-allowed ((xs SubjectList))
+  (Refine b Bool (allowed-list xs))
+  (match xs
+    ((nil) true)
+    ((cons head tail)
+      (if (allowed head)
+          (every-allowed tail)
+          false))))
