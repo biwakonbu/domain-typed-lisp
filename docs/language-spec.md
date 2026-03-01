@@ -27,8 +27,9 @@
 ## 2. CLI
 - `dtl check <FILE>... [--format text|json]`
   - 構文 / 名前解決 / 層化否定 / 型検査 / 全域性 / `match` 網羅性を検査する。
-- `dtl prove <FILE>... [--format text|json] [--out DIR]`
+- `dtl prove <FILE>... [--format text|json] [--engine native|reference] [--out DIR]`
   - 有限モデル上で証明義務を全探索し、証跡を生成する。
+  - `native` は既定エンジン、`reference` は独立参照意味論による experimental エンジン。
 - `dtl doc <FILE>... --out DIR [--format markdown|json]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
 - `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
@@ -199,6 +200,7 @@ term = var | symbol | int | bool | (Ctor term*)
     - `defn` の戻り値 Refinement 含意
     - `assert` 義務
   - `universe` で宣言された有限集合に対して全代入を列挙し、固定点評価で成立判定する。
+  - `reference` engine は function-typed quantified variable を含む valuation を有限関数モデルとして列挙できる。
   - 失敗時は最小前提セット（包含最小）を反例として出力する。
 
 ## 8. 生成物

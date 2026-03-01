@@ -85,6 +85,123 @@ fn cli_prove_json_accepts_constructor_alias() {
 }
 
 #[test]
+fn cli_prove_reference_engine_matches_native_on_supported_input() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("supported.dtl");
+    fs::write(
+        &src,
+        r#"
+        (data Subject (alice) (bob))
+        (relation allowed (Subject))
+        (fact allowed (alice))
+        (universe Subject ((alice) (bob)))
+        (assert consistency ((u Subject))
+          (not (and (allowed u) (not (allowed u)))))
+        (defn witness ((u Subject))
+          (Refine b Bool (allowed u))
+          (allowed u))
+        "#,
+    )
+    .expect("write");
+
+    let native = {
+        let mut cmd = cargo_bin_cmd!("dtl");
+        let output = cmd
+            .arg("prove")
+            .arg(&src)
+            .arg("--format")
+            .arg("json")
+            .arg("--engine")
+            .arg("native")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        serde_json::from_slice::<Value>(&output).expect("native json")
+    };
+
+    let reference = {
+        let mut cmd = cargo_bin_cmd!("dtl");
+        let output = cmd
+            .arg("prove")
+            .arg(&src)
+            .arg("--format")
+            .arg("json")
+            .arg("--engine")
+            .arg("reference")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        serde_json::from_slice::<Value>(&output).expect("reference json")
+    };
+
+    assert_eq!(native["proof"], reference["proof"]);
+}
+
+#[test]
+fn cli_prove_reference_engine_supports_function_typed_quantifier() {
+    let dir = tempdir().expect("tempdir");
+    let src = dir.path().join("function_quantifier.dtl");
+    fs::write(
+        &src,
+        r#"
+        (defn witness ((f (-> (Symbol) Bool)) (x Symbol))
+          (Refine b Bool true)
+          true)
+
+        (universe Symbol (alice bob))
+        (universe Bool (true false))
+        "#,
+    )
+    .expect("write");
+
+    let mut native_cmd = cargo_bin_cmd!("dtl");
+    let native_output = native_cmd
+        .arg("prove")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("native")
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let native: Value = serde_json::from_slice(&native_output).expect("native json");
+    assert_eq!(native["status"], "error");
+    assert!(
+        native["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .any(|diag| diag["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("function-typed quantified variables"))
+    );
+
+    let mut reference_cmd = cargo_bin_cmd!("dtl");
+    let reference_output = reference_cmd
+        .arg("prove")
+        .arg(&src)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("reference")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let reference: Value = serde_json::from_slice(&reference_output).expect("reference json");
+    assert_eq!(reference["status"], "ok");
+}
+
+#[test]
 fn cli_prove_returns_error_when_obligation_fails() {
     let dir = tempdir().expect("tempdir");
     let src = dir.path().join("ng.dtl");

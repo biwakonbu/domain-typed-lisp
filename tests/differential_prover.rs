@@ -83,6 +83,7 @@ fn prover_matches_reference_on_curated_fixtures() {
         "semantics/if-condition-sensitive/failing_refine.dtl",
         "semantics/match-pattern-sensitive/branch_sensitive.dtl",
         "semantics/alias-canonicalization/with_alias.dtl",
+        "semantics/recursive-defn/list_allows.dtl",
         "semantics/assert-counterexample/everyone_allowed.dtl",
     ] {
         let src = read_fixture(path);
@@ -182,17 +183,6 @@ fn resolve_rejects_unsafe_rule_fixture() {
     let errs = resolve_program(&program);
     assert!(!errs.is_empty(), "resolve should reject unsafe rule");
     assert!(errs.iter().any(|diag| diag.message.contains("unsafe rule")));
-}
-
-#[test]
-fn recursive_refine_fixture_is_marked_unsupported_in_phase1() {
-    let src = read_fixture("semantics/recursive-defn/list_allows.dtl");
-    let program = parse_program(&src).expect("parse should succeed");
-    let errs = check_program(&program).expect_err("phase1 should reject recursive refine");
-    assert!(
-        errs.iter()
-            .any(|diag| diag.code == "E-ENTAIL" || diag.code == "E-TOTAL")
-    );
 }
 
 fn proper_subsets(items: &[String]) -> Vec<Vec<String>> {

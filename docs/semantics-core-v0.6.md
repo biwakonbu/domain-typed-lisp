@@ -99,12 +99,13 @@ Value = Symbol(String)
 - `tests/differential_logic_engine.rs` は導出 fact 集合を比較する。
 - `tests/differential_prover.rs` は obligation の `id/kind/result/valuation/missing_goals` を比較する。
 - `tests/metamorphic_semantics.rs` は順序・alias・alpha-renaming・fmt・import 分割の不変性を確認する。
+- `native` engine は既存の `ProofTrace` 契約を維持しつつ、`recursive defn Refine` の一部を `check_program()` の semantic fallback で通す。
+- `reference` engine は独立 evaluator を用い、function-typed quantified variable を有限関数モデルとして列挙できる。
 
 ## phase1 で明示的に対象外
-- function-typed quantified variable を持つ `prove`
 - parametric ADT
 - parser 自体の独立形式検証
-- `check_program()` が現在 `E-ENTAIL` / `E-TOTAL` で拒否する recursive `defn Refine`
+- `check_program()` が universe なしでは still `E-ENTAIL` になる recursive `defn Refine` の完全一般化
 
 ## 差異 triage
 - reference = spec, production != reference

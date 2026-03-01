@@ -8,6 +8,7 @@ pub mod logic_engine;
 pub mod name_resolve;
 pub mod parser;
 pub mod prover;
+pub mod reference_prover;
 pub mod stratify;
 pub mod typecheck;
 pub mod types;
@@ -24,5 +25,10 @@ pub use prover::{
     PROOF_TRACE_SCHEMA_VERSION, ProofSummary, ProofTrace, generate_doc_bundle,
     generate_doc_bundle_with_options, has_failed_obligation, has_full_claim_coverage,
     prove_program, write_proof_trace,
+};
+pub use reference_prover::{
+    FunctionValue as ReferenceFunctionValue, ReferenceDerivedFacts, ReferenceEnv,
+    ReferenceObligationResult, ReferenceValue, prove_program_reference, reference_prove_program,
+    reference_prove_program_results, reference_solve_facts, reference_value_to_string,
 };
 pub use typecheck::{TypeReport, check_program};

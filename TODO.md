@@ -2,16 +2,16 @@
 
 最終更新: 2026-03-01
 
-残件: 4
+残件: 2
 
 ## P5（v0.6 意味論検証）
 - [x] `prove` の `defn Refine` 判定を `formula_from_expr()` 近似から、式の直接評価ベースへ移行する。
 - [x] production 実装とは独立した参照意味論オラクルを `tests/support/reference_semantics.rs` に実装する。
 - [x] `logic_engine` / `prove` の differential テストと metamorphic テストを追加し、CI 品質ゲートへ組み込む。
 - [x] `docs/semantics-core-v0.6.md` / `docs/formalization-roadmap.md` を追加し、trusted boundary と phase1 の supported fragment を明文化する。
-- [ ] recursive `defn Refine` を supported fragment に含めるため、`check_program` の静的意味論と reference oracle を拡張する。
-- [ ] function-typed quantified variable を含む `prove` を reference oracle 側でも扱えるようにする。
-- [ ] user-facing な比較実行のため、experimental な `dtl prove --engine native|reference` を設計・実装する。
+- [x] recursive `defn Refine` を supported fragment に含めるため、`check_program` の静的意味論と reference oracle を拡張する。
+- [x] function-typed quantified variable を含む `prove` を reference oracle 側でも扱えるようにする。
+- [x] user-facing な比較実行のため、experimental な `dtl prove --engine native|reference` を設計・実装する。
 - [ ] `semantics-core-v0.6.md` の core subset を対象に、Lean / Coq 形式化用の別リポジトリを立ち上げる。
 
 ## P0（v0.4 核）

@@ -8,7 +8,7 @@ use dtl::{
     Diagnostic, DocBundleFormat, DocBundleOptions, FormatOptions, LintDiagnostic, LintOptions,
     Program, ProofTrace, Span, check_program, format_source, generate_doc_bundle_with_options,
     has_failed_obligation, has_full_claim_coverage, lint_program, parse_program_with_source,
-    prove_program, write_proof_trace,
+    prove_program, prove_program_reference, write_proof_trace,
 };
 use serde::Serialize;
 
@@ -35,6 +35,8 @@ enum Command {
         files: Vec<PathBuf>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
+        #[arg(long, value_enum, default_value_t = ProveEngine::Native)]
+        engine: ProveEngine,
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -104,6 +106,12 @@ enum OutputFormat {
 enum DocFormat {
     Markdown,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ProveEngine {
+    Native,
+    Reference,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,7 +187,12 @@ fn main() {
     let cli = Cli::parse();
     let exit_code = match cli.command {
         Command::Check { files, format } => run_check(&files, format),
-        Command::Prove { files, format, out } => run_prove(&files, format, out.as_deref()),
+        Command::Prove {
+            files,
+            format,
+            engine,
+            out,
+        } => run_prove(&files, format, engine, out.as_deref()),
         Command::Doc {
             files,
             out,
@@ -238,7 +251,12 @@ fn run_check(files: &[PathBuf], format: OutputFormat) -> i32 {
     }
 }
 
-fn run_prove(files: &[PathBuf], format: OutputFormat, out: Option<&Path>) -> i32 {
+fn run_prove(
+    files: &[PathBuf],
+    format: OutputFormat,
+    engine: ProveEngine,
+    out: Option<&Path>,
+) -> i32 {
     let program = match load_program(files) {
         Ok(program) => program,
         Err(diags) => {
@@ -247,7 +265,10 @@ fn run_prove(files: &[PathBuf], format: OutputFormat, out: Option<&Path>) -> i32
         }
     };
 
-    let trace = match prove_program(&program) {
+    let trace = match match engine {
+        ProveEngine::Native => prove_program(&program),
+        ProveEngine::Reference => prove_program_reference(&program),
+    } {
         Ok(trace) => trace,
         Err(diags) => {
             let diags = attach_source_if_missing(diags, files);

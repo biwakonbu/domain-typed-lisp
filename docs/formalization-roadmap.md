@@ -11,7 +11,7 @@
 - mismatch は CI fail にする。
 
 ## phase2
-- user-facing 比較実行が必要なら experimental な `--engine native|reference` を検討する。
+- user-facing 比較実行の experimental な `--engine native|reference` は実装済み。以後は JSON 契約と UX の安定化を行う。
 - 参照オラクルの coverage を広げ、unsupported fragment を段階的に減らす。
 - recursive `defn Refine` を supported fragment に入れるかは `check_program` の静的意味論拡張後に判断する。
 
