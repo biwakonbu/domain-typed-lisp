@@ -3,6 +3,7 @@
 ## 目的
 - この文書は、`dtl` のコア意味論を Lean / Coq の別リポジトリへ切り出す際の bootstrap 契約を固定する。
 - proof repo 側は production 実装を写経せず、[semantics-core-v0.6.md](./semantics-core-v0.6.md) の core subset を source of truth として採用する。
+- 初回 publish 先: [biwakonbu/domain-typed-lisp-formalization](https://github.com/biwakonbu/domain-typed-lisp-formalization)（Lean 4.28.0）。
 
 ## proof repo に持ち込む入力
 - 仕様

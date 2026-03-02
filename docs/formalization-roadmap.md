@@ -18,6 +18,7 @@
 ## phase3
 - 形式証明リポジトリを本体と分離して管理する。
 - 本体 repo 側の bootstrap 資材は [formalization-bootstrap.md](./formalization-bootstrap.md) と [formalization-theorem-inventory.md](./formalization-theorem-inventory.md) に固定する。
+- 初回 publish 済み proof repo: [biwakonbu/domain-typed-lisp-formalization](https://github.com/biwakonbu/domain-typed-lisp-formalization)（Lean 4.28.0）。
 - 優先順は次の通り。
   1. stratified fixedpoint solver の soundness / completeness
   2. `assert` evaluator の soundness
@@ -29,3 +30,7 @@
 - prover の選定（Lean 4 または Coq）を固定し、toolchain を CI で再現できること。
 - theorem inventory の P0 セットに対して、定理名・依存補題・未証明 stub をコンパイル可能な形で配置すること。
 - current repo の curated semantics fixture から最低 3 件を proof repo 側へ転載し、意味論例として参照できること。
+
+## 現在位置
+- Lean 4 を採用し、proof repo の bootstrap / theorem inventory / curated fixture 移送 / CI smoke / GitHub publish まで完了した。
+- 残る phase3 作業は theorem stub を実証明へ置き換えること。
