@@ -184,10 +184,23 @@ cargo run -- fmt examples/customer_contract_ja.dtl
 ### 7.6 `selfdoc`
 ```bash
 cargo run -- selfdoc --repo . --out out_selfdoc --format json
+
+# 参照意味論で自己記述を検証したい場合
+cargo run -- selfdoc --repo . --out out_selfdoc_ref --format json --engine reference
 ```
 - `.dtl-selfdoc.toml` を読み取り、リポジトリを走査して `selfdoc.generated.dtl` を生成します。
 - その後、生成 DSL に対して `prove/doc` を実行し、`spec.json` / `proof-trace.json` / `doc-index.json` を出力します。
 - 設定ファイルが無い場合はテンプレートを stderr 出力し、`exit code 2` で終了します。
+
+### 7.7 `selfcheck`
+```bash
+cargo run -- selfcheck --repo . --out out_selfcheck --format json
+
+# 参照意味論で coverage と証明義務を確認したい場合
+cargo run -- selfcheck --repo . --out out_selfcheck_ref --format json --engine reference
+```
+- `selfdoc` と同じ生成 DSL を使い、`claim_coverage = 100%` かつ全義務 `proved` を要求します。
+- `proof-trace.json` の `engine` を見れば、`native` / `reference` のどちらで検証したか追跡できます。
 
 ## 8. チュートリアル: `check -> prove -> doc` 一気通貫
 

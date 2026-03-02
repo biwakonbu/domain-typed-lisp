@@ -79,6 +79,8 @@ enum Command {
         out: PathBuf,
         #[arg(long, value_enum, default_value_t = DocFormat::Markdown)]
         format: DocFormat,
+        #[arg(long, value_enum, default_value_t = ProveEngine::Native)]
+        engine: ProveEngine,
         #[arg(long, default_value_t = false)]
         pdf: bool,
     },
@@ -93,6 +95,8 @@ enum Command {
         format: OutputFormat,
         #[arg(long, value_enum, default_value_t = DocFormat::Json)]
         doc_format: DocFormat,
+        #[arg(long, value_enum, default_value_t = ProveEngine::Native)]
+        engine: ProveEngine,
         #[arg(long, default_value_t = false)]
         pdf: bool,
     },
@@ -218,16 +222,26 @@ fn main() {
             config,
             out,
             format,
+            engine,
             pdf,
-        } => run_selfdoc(&repo, config.as_deref(), &out, format, pdf),
+        } => run_selfdoc(&repo, config.as_deref(), &out, format, engine, pdf),
         Command::Selfcheck {
             repo,
             config,
             out,
             format,
             doc_format,
+            engine,
             pdf,
-        } => run_selfcheck(&repo, config.as_deref(), &out, format, doc_format, pdf),
+        } => run_selfcheck(
+            &repo,
+            config.as_deref(),
+            &out,
+            format,
+            doc_format,
+            engine,
+            pdf,
+        ),
     };
     std::process::exit(exit_code);
 }
@@ -268,10 +282,7 @@ fn run_prove(
         }
     };
 
-    let trace = match match engine {
-        ProveEngine::Native => prove_program(&program),
-        ProveEngine::Reference => prove_program_reference(&program),
-    } {
+    let trace = match prove_with_engine(&program, engine) {
         Ok(trace) => trace,
         Err(diags) => {
             let diags = attach_source_if_missing(diags, files);
@@ -350,10 +361,7 @@ fn run_doc(
         }
     };
 
-    let trace = match match engine {
-        ProveEngine::Native => prove_program(&program),
-        ProveEngine::Reference => prove_program_reference(&program),
-    } {
+    let trace = match prove_with_engine(&program, engine) {
         Ok(trace) => trace,
         Err(diags) => {
             for d in attach_source_if_missing(diags, files) {
@@ -399,6 +407,7 @@ fn run_selfdoc(
     config: Option<&Path>,
     out: &Path,
     format: DocFormat,
+    engine: ProveEngine,
     pdf: bool,
 ) -> i32 {
     let subcommands = Cli::command()
@@ -436,7 +445,7 @@ fn run_selfdoc(
         }
     };
 
-    let mut trace = match prove_program(&program) {
+    let mut trace = match prove_with_engine(&program, engine) {
         Ok(trace) => trace,
         Err(diags) => {
             for d in attach_source_if_missing(diags, &files) {
@@ -490,6 +499,7 @@ fn run_selfcheck(
     out: &Path,
     format: OutputFormat,
     doc_format: DocFormat,
+    engine: ProveEngine,
     pdf: bool,
 ) -> i32 {
     let subcommands = Cli::command()
@@ -563,7 +573,7 @@ fn run_selfcheck(
         }
     };
 
-    let mut trace = match prove_program(&program) {
+    let mut trace = match prove_with_engine(&program, engine) {
         Ok(trace) => trace,
         Err(diags) => {
             let diags = attach_source_if_missing(diags, &files);
@@ -775,6 +785,16 @@ fn run_lint(
         1
     } else {
         0
+    }
+}
+
+fn prove_with_engine(
+    program: &Program,
+    engine: ProveEngine,
+) -> Result<ProofTrace, Vec<Diagnostic>> {
+    match engine {
+        ProveEngine::Native => prove_program(program),
+        ProveEngine::Reference => prove_program_reference(program),
     }
 }
 

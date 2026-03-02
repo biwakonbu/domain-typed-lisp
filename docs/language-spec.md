@@ -33,12 +33,12 @@
 - `dtl doc <FILE>... --out DIR [--format markdown|json] [--engine native|reference]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
   - `--engine reference` を指定すると、`prove` と同じ参照意味論で `proof-trace.json` を生成する。
-- `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
+- `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--engine native|reference] [--pdf]`
   - `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を実行し、自己記述成果物を生成する。
   - README または language-spec の `<!-- selfdoc:cli-contracts:start -->` 契約テーブルから CLI 契約を抽出する。
   - `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
   - 設定ファイル未配置時はテンプレートを stderr に出力し `exit code = 2` で終了する。
-- `dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--pdf]`
+- `dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--engine native|reference] [--pdf]`
   - `selfdoc` と同一フローを実行し、`claim_coverage = 100%` かつ全義務 `proved` の場合のみ成功する。
   - 失敗時も `proof-trace.json` は出力する。
 - `dtl lint <FILE>... [--format text|json] [--deny-warnings] [--semantic-dup]`

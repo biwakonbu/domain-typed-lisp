@@ -142,6 +142,35 @@ fn selfdoc_generates_bundle_and_intermediate_dsl() {
 }
 
 #[test]
+fn selfdoc_reference_engine_writes_reference_trace() {
+    let dir = tempdir().expect("tempdir");
+    write_base_repo(dir.path());
+
+    let out = dir.path().join("out_ref");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    cmd.arg("selfdoc")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("reference")
+        .assert()
+        .success();
+
+    let trace: Value =
+        serde_json::from_slice(&fs::read(out.join("proof-trace.json")).expect("read proof trace"))
+            .expect("valid proof trace");
+    assert_eq!(trace["schema_version"], "2.2.0");
+    assert_eq!(trace["profile"], "selfdoc");
+    assert_eq!(trace["engine"], "reference");
+    assert_eq!(trace["claim_coverage"]["total_claims"], 7);
+    assert_eq!(trace["claim_coverage"]["proved_claims"], 7);
+}
+
+#[test]
 fn selfdoc_rejects_plain_cli_strings_without_structured_contract_table() {
     let dir = tempdir().expect("tempdir");
     write_base_repo(dir.path());
