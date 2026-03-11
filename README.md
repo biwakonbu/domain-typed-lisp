@@ -67,7 +67,7 @@ python3 ./scripts/generate-glossary-assets.py
 # HTML を生成
 ./scripts/docs-site-build.sh
 
-# ローカル確認
+# 任意: ローカル確認
 ./scripts/docs-site-serve.sh
 ```
 
