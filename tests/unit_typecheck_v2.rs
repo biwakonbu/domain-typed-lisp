@@ -239,6 +239,42 @@ fn typecheck_rejects_unreachable_match_arm() {
 }
 
 #[test]
+fn typecheck_accepts_recursive_refine_with_universe_fallback() {
+    let src = r#"
+        (data Subject
+          (alice)
+          (bob))
+        (data SubjectList
+          (nil)
+          (cons Subject SubjectList))
+        (relation allowed (Subject))
+        (relation allowed-list (SubjectList))
+        (fact allowed (alice))
+        (fact allowed-list (nil))
+        (fact allowed-list (cons (alice) (nil)))
+        (fact allowed-list (cons (alice) (cons (alice) (nil))))
+        (universe Subject ((alice) (bob)))
+        (universe SubjectList (
+          (nil)
+          (cons (alice) (nil))
+          (cons (bob) (nil))
+          (cons (alice) (cons (alice) (nil)))))
+        (defn every-allowed ((xs SubjectList))
+          (Refine b Bool (allowed-list xs))
+          (match xs
+            ((nil) true)
+            ((cons head tail)
+              (if (allowed head)
+                  (every-allowed tail)
+                  false))))
+    "#;
+
+    let program = parse_program(src).expect("parse");
+    let report = check_program(&program).expect("should pass");
+    assert_eq!(report.errors, 0);
+}
+
+#[test]
 fn typecheck_rejects_symbol_for_japanese_adt_argument() {
     let src = r#"
         (data 顧客種別 (法人) (個人))

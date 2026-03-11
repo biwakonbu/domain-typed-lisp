@@ -1,0 +1,5 @@
+(sort Subject)
+(relation allowed (Subject))
+(defn bad ((u Symbol))
+  Bool
+  (allowed u))

@@ -1,0 +1,13 @@
+(data Subject
+  (alice)
+  (bob))
+(relation admin (Subject))
+(relation allowed (Subject))
+(fact admin (alice))
+(fact allowed (alice))
+(universe Subject ((alice) (bob)))
+(defn privilege-check ((u Subject))
+  (Refine b Bool (allowed u))
+  (if (admin u)
+      (allowed u)
+      (allowed u)))

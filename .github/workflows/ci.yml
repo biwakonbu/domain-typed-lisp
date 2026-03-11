@@ -19,6 +19,12 @@ jobs:
         run: cargo test --workspace --lib --bins --tests
       - name: property test
         run: cargo test --test property_logic
+      - name: differential logic engine
+        run: cargo test --test differential_logic_engine
+      - name: differential prover
+        run: cargo test --test differential_prover
+      - name: metamorphic semantics
+        run: cargo test --test metamorphic_semantics
       - name: coverage gate
         run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 80
       - name: coverage lcov

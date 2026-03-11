@@ -1,0 +1,7 @@
+(data Subject
+  (alice)
+  (bob))
+(relation allowed (Subject))
+(fact allowed (alice))
+(assert all-subjects-allowed ((u Subject))
+  (allowed u))

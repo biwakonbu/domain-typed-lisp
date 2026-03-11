@@ -696,6 +696,44 @@ fn cli_selfcheck_succeeds_with_full_claim_coverage() {
 
     let value: Value = serde_json::from_slice(&output).expect("valid selfcheck json");
     assert_eq!(value["status"], "ok");
+    assert_eq!(value["proof"]["engine"], "native");
+    assert_eq!(value["proof"]["claim_coverage"]["total_claims"], 7);
+    assert_eq!(value["proof"]["claim_coverage"]["proved_claims"], 7);
+    assert_eq!(value["proof"]["summary"]["failed"], 0);
+    assert!(out.join("spec.json").exists());
+    assert!(out.join("proof-trace.json").exists());
+}
+
+#[test]
+fn cli_selfcheck_reference_engine_succeeds_with_full_claim_coverage() {
+    let dir = tempdir().expect("tempdir");
+    let rows = SELF_COMMANDS
+        .iter()
+        .map(|name| (*name, "src/main.rs"))
+        .collect::<Vec<_>>();
+    write_selfcheck_repo(dir.path(), &rows);
+
+    let out = dir.path().join("out_ref");
+    let mut cmd = cargo_bin_cmd!("dtl");
+    let output = cmd
+        .arg("selfcheck")
+        .arg("--repo")
+        .arg(dir.path())
+        .arg("--out")
+        .arg(&out)
+        .arg("--format")
+        .arg("json")
+        .arg("--engine")
+        .arg("reference")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let value: Value = serde_json::from_slice(&output).expect("valid selfcheck json");
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["proof"]["engine"], "reference");
     assert_eq!(value["proof"]["claim_coverage"]["total_claims"], 7);
     assert_eq!(value["proof"]["claim_coverage"]["proved_claims"], 7);
     assert_eq!(value["proof"]["summary"]["failed"], 0);

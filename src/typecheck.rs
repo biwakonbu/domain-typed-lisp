@@ -4,6 +4,7 @@ use crate::ast::{Defn, Expr, MatchArm, Pattern, Program};
 use crate::diagnostics::Diagnostic;
 use crate::logic_engine::{DerivedFacts, GroundFact, KnowledgeBase, Value, solve_facts};
 use crate::name_resolve::{normalize_program_aliases, resolve_program};
+use crate::reference_prover::reference_prove_program_results;
 use crate::stratify::compute_strata;
 use crate::types::{Atom, Formula, LogicTerm, Type};
 
@@ -99,7 +100,7 @@ pub fn check_program(program: &Program) -> Result<TypeReport, Vec<Diagnostic>> {
     };
 
     for defn in &normalized.defns {
-        if let Err(mut e) = check_defn(defn, &ctx) {
+        if let Err(mut e) = check_defn(defn, &normalized, &ctx) {
             errors.append(&mut e);
         }
     }
@@ -610,7 +611,7 @@ fn build_data_constructor_map(program: &Program) -> HashMap<String, Vec<String>>
     map
 }
 
-fn check_defn(defn: &Defn, ctx: &TypeContext) -> Result<(), Vec<Diagnostic>> {
+fn check_defn(defn: &Defn, program: &Program, ctx: &TypeContext) -> Result<(), Vec<Diagnostic>> {
     let mut env = HashMap::new();
     for p in &defn.params {
         env.insert(p.name.clone(), canonicalize_type_for_ctx(&p.ty, ctx));
@@ -620,8 +621,26 @@ fn check_defn(defn: &Defn, ctx: &TypeContext) -> Result<(), Vec<Diagnostic>> {
     let expected = canonicalize_type_for_ctx(&defn.ret_type, ctx);
     match is_subtype(&actual, &expected, ctx) {
         Ok(()) => Ok(()),
+        Err(e)
+            if e.code == "E-ENTAIL"
+                && matches!(expected, Type::Refine { .. })
+                && semantic_refinement_check_passes(program, &defn.name) =>
+        {
+            Ok(())
+        }
         Err(e) => Err(vec![e]),
     }
+}
+
+fn semantic_refinement_check_passes(program: &Program, defn_name: &str) -> bool {
+    let Ok(results) = reference_prove_program_results(program) else {
+        return false;
+    };
+    results
+        .iter()
+        .find(|item| item.id == format!("defn::{defn_name}"))
+        .map(|item| item.result == "proved")
+        .unwrap_or(false)
 }
 
 fn infer_expr(

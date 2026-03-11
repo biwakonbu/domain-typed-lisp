@@ -1,0 +1,10 @@
+(data Subject
+  (alice)
+  (bob))
+(data SubjectList
+  (nil)
+  (cons Subject SubjectList))
+(relation singleton (SubjectList))
+(relation normalized (SubjectList))
+(fact singleton (cons (alice) (nil)))
+(rule (normalized ?xs) (singleton ?xs))

@@ -1,8 +1,28 @@
-# TODO (v0.4)
+# TODO (v0.6)
 
-最終更新: 2026-02-27
+最終更新: 2026-03-11
 
-残件: 0
+残件: 8
+
+## P6（proof repo 残作業）
+- [ ] `Expr.call` の意味論を proof repo 側で未解釈 (`none`) から外し、relation call / constructor call / defn call の抽象 evaluator を導入する。
+- [ ] `AssertionHolds` を valuation 列挙 + `evalFormula` に接続し、`assert_sound` を theorem 化する。
+- [ ] `RefineHolds` を `evalExpr` / `evalFormula` に接続し、`refine_sound` を theorem 化する。
+- [ ] `ground_substitution_closed` を theorem 化する。
+- [ ] `negative_literal_filter_sound` を theorem 化する。
+- [ ] `rule_instantiation_sound` を theorem 化する。
+- [ ] `rule_instantiation_complete` を theorem 化する。
+- [ ] `constructor_normalization_preserves_value` を theorem 化する。
+
+## P5（v0.6 意味論検証）
+- [x] `prove` の `defn Refine` 判定を `formula_from_expr()` 近似から、式の直接評価ベースへ移行する。
+- [x] production 実装とは独立した参照意味論オラクルを `tests/support/reference_semantics.rs` に実装する。
+- [x] `logic_engine` / `prove` の differential テストと metamorphic テストを追加し、CI 品質ゲートへ組み込む。
+- [x] `docs/semantics-core-v0.6.md` / `docs/formalization-roadmap.md` を追加し、trusted boundary と phase1 の supported fragment を明文化する。
+- [x] recursive `defn Refine` を supported fragment に含めるため、`check_program` の静的意味論と reference oracle を拡張する。
+- [x] function-typed quantified variable を含む `prove` を reference oracle 側でも扱えるようにする。
+- [x] user-facing な比較実行のため、experimental な `dtl prove --engine native|reference` を設計・実装する。
+- [x] `semantics-core-v0.6.md` の core subset を対象に、Lean 4 形式化用の別リポジトリを publish する（https://github.com/biwakonbu/domain-typed-lisp-formalization, Lean 4.28.0）。
 
 ## P0（v0.4 核）
 - [x] `lint` サブコマンドを追加し、`L-DUP-EXACT` / `L-DUP-MAYBE` / `L-DUP-SKIP-UNIVERSE` / `L-DUP-SKIP-EVAL-DEPTH` / `L-UNUSED-DECL` を実装する。

@@ -184,10 +184,23 @@ cargo run -- fmt examples/customer_contract_ja.dtl
 ### 7.6 `selfdoc`
 ```bash
 cargo run -- selfdoc --repo . --out out_selfdoc --format json
+
+# 参照意味論で自己記述を検証したい場合
+cargo run -- selfdoc --repo . --out out_selfdoc_ref --format json --engine reference
 ```
 - `.dtl-selfdoc.toml` を読み取り、リポジトリを走査して `selfdoc.generated.dtl` を生成します。
 - その後、生成 DSL に対して `prove/doc` を実行し、`spec.json` / `proof-trace.json` / `doc-index.json` を出力します。
 - 設定ファイルが無い場合はテンプレートを stderr 出力し、`exit code 2` で終了します。
+
+### 7.7 `selfcheck`
+```bash
+cargo run -- selfcheck --repo . --out out_selfcheck --format json
+
+# 参照意味論で coverage と証明義務を確認したい場合
+cargo run -- selfcheck --repo . --out out_selfcheck_ref --format json --engine reference
+```
+- `selfdoc` と同じ生成 DSL を使い、`claim_coverage = 100%` かつ全義務 `proved` を要求します。
+- `proof-trace.json` の `engine` を見れば、`native` / `reference` のどちらで検証したか追跡できます。
 
 ## 8. チュートリアル: `check -> prove -> doc` 一気通貫
 
@@ -215,6 +228,9 @@ cargo run -- check examples/customer_contract_ja.dtl --format json
 
 ```bash
 cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
+
+# 参照意味論で比較したい場合
+cargo run -- prove examples/customer_contract_ja.dtl --format json --engine reference --out out_ja_ref
 ```
 
 この実行で次の 2 つを確認します。
@@ -224,7 +240,7 @@ cargo run -- prove examples/customer_contract_ja.dtl --format json --out out_ja
 `proof-trace.json` の最小確認:
 
 ```bash
-jq '.schema_version, .obligations[] | {id, kind, result}' out_ja/proof-trace.json
+jq '.schema_version, .engine, .obligations[] | {id, kind, result}' out_ja/proof-trace.json
 ```
 
 `result` が `failed` の義務が 1 つでもある場合、`doc` は失敗します。
@@ -235,6 +251,9 @@ Markdown 仕様を出力:
 
 ```bash
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown
+
+# 参照意味論の結果で bundle 化したい場合
+cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_ref --format markdown --engine reference
 
 # PDF も必要な場合（Pandoc 環境）
 cargo run -- doc examples/customer_contract_ja.dtl --out out_ja --format markdown --pdf
@@ -260,8 +279,9 @@ cargo run -- doc examples/customer_contract_ja.dtl --out out_ja_json --format js
 - `intermediate.dsl` は通常 `null`、`selfdoc` 実行時は `selfdoc.generated.dtl` です。
 
 ### 9.2 `proof-trace.json`
-- `schema_version`: `2.1.0`（トレース契約バージョン）
+- `schema_version`: `2.2.0`（トレース契約バージョン）
 - `profile`: `standard` または `selfdoc`
+- `engine`: `native` または `reference`
 - `summary`: `total/proved/failed` の要約
 - `claim_coverage`: `total_claims/proved_claims`（`selfcheck` では 100% 必須）
 - `obligations[].id`: `defn::...` または `assert::...`

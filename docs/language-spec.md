@@ -27,16 +27,18 @@
 ## 2. CLI
 - `dtl check <FILE>... [--format text|json]`
   - 構文 / 名前解決 / 層化否定 / 型検査 / 全域性 / `match` 網羅性を検査する。
-- `dtl prove <FILE>... [--format text|json] [--out DIR]`
+- `dtl prove <FILE>... [--format text|json] [--engine native|reference] [--out DIR]`
   - 有限モデル上で証明義務を全探索し、証跡を生成する。
-- `dtl doc <FILE>... --out DIR [--format markdown|json]`
+  - `native` は既定エンジン、`reference` は独立参照意味論による experimental エンジン。
+- `dtl doc <FILE>... --out DIR [--format markdown|json] [--engine native|reference]`
   - 証明がすべて成功した場合のみドキュメント束を生成する。
-- `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--pdf]`
+  - `--engine reference` を指定すると、`prove` と同じ参照意味論で `proof-trace.json` を生成する。
+- `dtl selfdoc [--repo PATH] [--config PATH] --out DIR [--format markdown|json] [--engine native|reference] [--pdf]`
   - `scan -> extract -> render selfdoc DSL -> parse/prove/doc` を実行し、自己記述成果物を生成する。
   - README または language-spec の `<!-- selfdoc:cli-contracts:start -->` 契約テーブルから CLI 契約を抽出する。
   - `--config` 省略時は `<repo>/.dtl-selfdoc.toml` を使用する。
   - 設定ファイル未配置時はテンプレートを stderr に出力し `exit code = 2` で終了する。
-- `dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--pdf]`
+- `dtl selfcheck [--repo PATH] [--config PATH] --out DIR [--format text|json] [--doc-format markdown|json] [--engine native|reference] [--pdf]`
   - `selfdoc` と同一フローを実行し、`claim_coverage = 100%` かつ全義務 `proved` の場合のみ成功する。
   - 失敗時も `proof-trace.json` は出力する。
 - `dtl lint <FILE>... [--format text|json] [--deny-warnings] [--semantic-dup]`
@@ -182,6 +184,7 @@ term = var | symbol | int | bool | (Ctor term*)
 ```
 
 ## 7. 検証意味論
+- コア意味論と trusted boundary の詳細は [semantics-core-v0.6.md](./semantics-core-v0.6.md) を参照する。
 - `check`
   - 再帰（自己再帰/相互再帰）は SCC 単位で判定し、SCC 内の各再帰エッジ（`caller -> callee`）が次を満たす場合のみ許可する。
     - 再帰呼び出しが tail position にある。
@@ -198,12 +201,13 @@ term = var | symbol | int | bool | (Ctor term*)
     - `defn` の戻り値 Refinement 含意
     - `assert` 義務
   - `universe` で宣言された有限集合に対して全代入を列挙し、固定点評価で成立判定する。
+  - `reference` engine は function-typed quantified variable を含む valuation を有限関数モデルとして列挙できる。
   - 失敗時は最小前提セット（包含最小）を反例として出力する。
 
 ## 8. 生成物
 - `prove --out DIR`:
-  - `proof-trace.json`（`schema_version = "2.1.0"`）
-  - 必須フィールド: `profile`（`standard|selfdoc`）, `summary`（`total/proved/failed`）, `claim_coverage`（`total_claims/proved_claims`）
+  - `proof-trace.json`（`schema_version = "2.2.0"`）
+  - 必須フィールド: `profile`（`standard|selfdoc`）, `engine`（`native|reference`）, `summary`（`total/proved/failed`）, `claim_coverage`（`total_claims/proved_claims`）
 - `doc --out DIR --format markdown`:
   - `spec.md`
   - `proof-trace.json`

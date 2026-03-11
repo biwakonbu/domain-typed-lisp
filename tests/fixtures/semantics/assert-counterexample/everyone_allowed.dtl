@@ -1,0 +1,8 @@
+(data Subject
+  (alice)
+  (bob))
+(relation allowed (Subject))
+(fact allowed (alice))
+(universe Subject ((alice) (bob)))
+(assert everyone-allowed ((u Subject))
+  (allowed u))
