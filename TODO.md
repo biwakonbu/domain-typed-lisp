@@ -1,18 +1,18 @@
 # TODO (v0.6)
 
-最終更新: 2026-03-11
+最終更新: 2026-03-12
 
-残件: 8
+残件: 0
 
 ## P6（proof repo 残作業）
-- [ ] `Expr.call` の意味論を proof repo 側で未解釈 (`none`) から外し、relation call / constructor call / defn call の抽象 evaluator を導入する。
-- [ ] `AssertionHolds` を valuation 列挙 + `evalFormula` に接続し、`assert_sound` を theorem 化する。
-- [ ] `RefineHolds` を `evalExpr` / `evalFormula` に接続し、`refine_sound` を theorem 化する。
-- [ ] `ground_substitution_closed` を theorem 化する。
-- [ ] `negative_literal_filter_sound` を theorem 化する。
-- [ ] `rule_instantiation_sound` を theorem 化する。
-- [ ] `rule_instantiation_complete` を theorem 化する。
-- [ ] `constructor_normalization_preserves_value` を theorem 化する。
+- [x] `Expr.call` の意味論を proof repo 側で未解釈 (`none`) から外し、relation call / constructor call / defn call の抽象 evaluator を導入する。
+- [x] `AssertionHolds` を valuation 列挙 + `evalFormula` に接続し、`assert_sound` を theorem 化する。
+- [x] `RefineHolds` を `evalExpr` / `evalFormula` に接続し、`refine_sound` を theorem 化する。
+- [x] `ground_substitution_closed` を theorem 化する。
+- [x] `negative_literal_filter_sound` を theorem 化する。
+- [x] `rule_instantiation_sound` を theorem 化する。
+- [x] `rule_instantiation_complete` を theorem 化する。
+- [x] `constructor_normalization_preserves_value` を theorem 化する。
 
 ## P5（v0.6 意味論検証）
 - [x] `prove` の `defn Refine` 判定を `formula_from_expr()` 近似から、式の直接評価ベースへ移行する。
