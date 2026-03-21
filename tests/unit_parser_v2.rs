@@ -54,15 +54,15 @@ fn parser_rejects_malformed_match_arm() {
 fn parser_accepts_surface_syntax_with_tags() {
     let src = r#"
         ; syntax: surface
-        (型 主体)
-        (データ 顧客種別 :コンストラクタ ((法人) (個人)))
-        (関係 契約締結可能 :引数 (主体 顧客種別))
-        (事実 契約締結可能 :項 (山田 (法人)))
-        (検証 整合性 :引数 ((u 主体)) :式 true)
-        (関数 判定
-          :引数 ((u 主体) (t 顧客種別))
-          :戻り Bool
-          :本体 true)
+        (sort 主体)
+        (data 顧客種別 :constructors ((法人) (個人)))
+        (relation 契約締結可能 :args (主体 顧客種別))
+        (fact 契約締結可能 :terms (山田 (法人)))
+        (assert 整合性 :params ((u 主体)) :formula true)
+        (defn 判定
+          :params ((u 主体) (t 顧客種別))
+          :ret Bool
+          :body true)
     "#;
 
     let program = parse_program(src).expect("surface parse should succeed");
@@ -78,7 +78,7 @@ fn parser_accepts_surface_syntax_with_tags() {
 fn parser_rejects_surface_data_without_required_tag() {
     let src = r#"
         ; syntax: surface
-        (データ 顧客種別 ((法人) (個人)))
+        (data 顧客種別 ((法人) (個人)))
     "#;
 
     let errs = parse_program(src).expect_err("surface parse should fail");
@@ -90,18 +90,18 @@ fn parser_rejects_surface_data_without_required_tag() {
 }
 
 #[test]
-fn parser_rejects_auto_mode_mixed_core_and_surface_with_dedicated_code() {
+fn parser_rejects_deprecated_japanese_surface_head_with_migration_hint() {
     let src = r#"
         (sort Subject)
         (relation allowed (Subject))
         (事実 allowed :項 (alice))
     "#;
 
-    let errs = parse_program(src).expect_err("auto mode mixed syntax should fail");
-    assert!(errs.iter().any(|d| d.code == "E-SYNTAX-AUTO"));
+    let errs = parse_program(src).expect_err("deprecated japanese head should fail");
+    assert!(errs.iter().any(|d| d.code == "E-PARSE"));
     assert!(
         errs.iter()
-            .any(|d| d.message.contains("syntax:auto 判定衝突"))
+            .any(|d| d.message.contains("日本語予約語 `事実` は廃止"))
     );
 }
 
@@ -109,9 +109,9 @@ fn parser_rejects_auto_mode_mixed_core_and_surface_with_dedicated_code() {
 fn parser_accepts_syntax_auto_pragma_when_surface_is_consistent() {
     let src = r#"
         ; syntax: auto
-        (型 主体)
-        (関係 契約可能 :引数 (主体))
-        (事実 契約可能 :項 (山田))
+        (sort 主体)
+        (relation 契約可能 :args (主体))
+        (fact 契約可能 :terms (山田))
     "#;
 
     let program = parse_program(src).expect("syntax:auto with consistent surface should parse");
@@ -137,11 +137,26 @@ fn parser_accepts_core_alias_declaration() {
 fn parser_accepts_surface_alias_declaration() {
     let src = r#"
         ; syntax: surface
-        (同義語 :別名 閲覧 :正規 read)
+        (alias :alias 閲覧 :canonical read)
     "#;
 
     let program = parse_program(src).expect("surface alias should parse");
     assert_eq!(program.aliases.len(), 1);
     assert_eq!(program.aliases[0].alias, "閲覧");
     assert_eq!(program.aliases[0].canonical, "read");
+}
+
+#[test]
+fn parser_rejects_deprecated_japanese_surface_tag_with_migration_hint() {
+    let src = r#"
+        ; syntax: surface
+        (relation 契約可能 :引数 (主体))
+    "#;
+
+    let errs = parse_program(src).expect_err("deprecated japanese tag should fail");
+    assert!(errs.iter().any(|d| d.code == "E-PARSE"));
+    assert!(
+        errs.iter()
+            .any(|d| d.message.contains("日本語タグ `:引数` は廃止"))
+    );
 }

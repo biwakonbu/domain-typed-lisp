@@ -420,7 +420,7 @@ fn cli_fmt_check_and_write() {
 
     let body = fs::read_to_string(&src).expect("read");
     assert!(body.contains("; syntax: surface"));
-    assert!(body.contains("(型 Subject)"));
+    assert!(body.contains("(sort Subject)"));
 }
 
 #[test]
@@ -431,14 +431,14 @@ fn cli_fmt_preserves_multi_context_blocks_idempotently() {
         &src,
         r#"; syntax: surface
 ; @context: sales
-(関係 sellable :引数 (商品))
-(型 商品)
-(事実 sellable :項 (本))
+(relation sellable :args (商品))
+(sort 商品)
+(fact sellable :terms (本))
 
 ; @context: support
-(型 チケット)
-(関係 open :引数 (チケット))
-(事実 open :項 (T1))
+(sort チケット)
+(relation open :args (チケット))
+(fact open :terms (T1))
 "#,
     )
     .expect("write");
@@ -448,8 +448,8 @@ fn cli_fmt_preserves_multi_context_blocks_idempotently() {
 
     let once = fs::read_to_string(&src).expect("read once");
     assert_eq!(once.matches("; @context:").count(), 2);
-    assert!(once.contains("; @context: sales\n\n(型 商品)\n"));
-    assert!(once.contains("; @context: support\n\n(型 チケット)\n"));
+    assert!(once.contains("; @context: sales\n\n(sort 商品)\n"));
+    assert!(once.contains("; @context: support\n\n(sort チケット)\n"));
 
     let mut second_fmt = cargo_bin_cmd!("dtl");
     second_fmt.arg("fmt").arg(&src).assert().success();
@@ -513,7 +513,7 @@ fn cli_fmt_accepts_selfdoc_forms_and_preserves_shape() {
         &src,
         r#"
         ; syntax: surface
-        (プロジェクト :名前 "dtl" :概要 "self")
+        (project :name "dtl" :summary "self")
         "#,
     )
     .expect("write");
@@ -521,7 +521,7 @@ fn cli_fmt_accepts_selfdoc_forms_and_preserves_shape() {
     let mut cmd = cargo_bin_cmd!("dtl");
     cmd.arg("fmt").arg(&src).assert().success();
     let rendered = fs::read_to_string(&src).expect("read");
-    assert!(rendered.contains("(プロジェクト :名前 \"dtl\" :概要 \"self\")"));
+    assert!(rendered.contains("(project :name \"dtl\" :summary \"self\")"));
 }
 
 #[test]
@@ -532,9 +532,9 @@ fn cli_fmt_accepts_contract_like_identifiers_without_selfdoc_tags() {
         &src,
         r#"
         ; syntax: surface
-        (型 契約)
-        (関係 契約登録 :引数 (契約))
-        (関数 契約可否 :引数 ((x 契約)) :戻り Bool :本体 true)
+        (sort 契約)
+        (relation 契約登録 :args (契約))
+        (defn 契約可否 :params ((x 契約)) :ret Bool :body true)
         "#,
     )
     .expect("write");
@@ -551,10 +551,10 @@ fn cli_fmt_accepts_selfdoc_form_when_tag_starts_on_next_line() {
         &src,
         r#"
         ; syntax: surface
-        (契約
-          :名前 "cli::check"
-          :出典 "README.md"
-          :パス "src/main.rs")
+        (contract
+          :name "cli::check"
+          :source "README.md"
+          :path "src/main.rs")
         "#,
     )
     .expect("write");
@@ -562,8 +562,8 @@ fn cli_fmt_accepts_selfdoc_form_when_tag_starts_on_next_line() {
     let mut cmd = cargo_bin_cmd!("dtl");
     cmd.arg("fmt").arg(&src).assert().success();
     let rendered = fs::read_to_string(&src).expect("read");
-    assert!(rendered.contains("(契約"));
-    assert!(rendered.contains(":名前 \"cli::check\""));
+    assert!(rendered.contains("(contract"));
+    assert!(rendered.contains(":name \"cli::check\""));
 }
 
 #[test]

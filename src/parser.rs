@@ -198,29 +198,7 @@ fn syntax_marker(form: &SExpr) -> Option<SyntaxMarker> {
     let head = list[0].as_atom()?;
 
     match head {
-        "型" | "データ" | "関係" | "事実" | "規則" | "検証" | "宇宙" | "関数" => {
-            Some(SyntaxMarker {
-                signal: SyntaxSignal::Surface,
-                reason: "日本語 Surface ヘッド",
-                start,
-                end,
-            })
-        }
-        "プロジェクト" | "モジュール" | "参照" | "契約" | "品質ゲート" => {
-            Some(SyntaxMarker {
-                signal: SyntaxSignal::Surface,
-                reason: "自己記述 Surface ヘッド",
-                start,
-                end,
-            })
-        }
-        "同義語" => Some(SyntaxMarker {
-            signal: SyntaxSignal::Surface,
-            reason: "同義語 Surface ヘッド",
-            start,
-            end,
-        }),
-        "import" | "インポート" | "sort" => None,
+        "import" | "sort" => None,
         "alias" => syntax_marker_from_tag_position(
             list,
             1,
@@ -349,39 +327,107 @@ fn syntax_mode_from_pragma(src: &str) -> Option<SyntaxPragma> {
 
 fn looks_like_surface(src: &str) -> bool {
     const MARKERS: &[&str] = &[
-        "(型",
-        "(データ",
-        "(関係",
-        "(事実",
-        "(規則",
-        "(検証",
-        "(宇宙",
-        "(関数",
-        "(プロジェクト :",
-        "(モジュール :",
-        "(参照 :",
-        "(契約 :",
-        "(品質ゲート :",
         "(project :",
         "(module :",
         "(reference :",
         "(contract :",
         "(quality-gate :",
-        "(同義語 :",
-        ":引数",
-        ":戻り",
-        ":本体",
-        ":コンストラクタ",
-        ":名前",
-        ":概要",
-        ":パス",
-        ":元",
-        ":先",
-        ":コマンド",
-        ":出典",
-        ":必須",
+        ":alias",
+        ":canonical",
+        ":constructors",
+        ":args",
+        ":terms",
+        ":head",
+        ":body",
+        ":params",
+        ":formula",
+        ":values",
+        ":ret",
+        ":name",
+        ":summary",
+        ":path",
+        ":category",
+        ":from",
+        ":to",
+        ":source",
+        ":command",
+        ":required",
     ];
     MARKERS.iter().any(|m| src.contains(m))
+}
+
+fn deprecated_surface_head(head: &str) -> Option<&'static str> {
+    match head {
+        "インポート" => Some("import"),
+        "同義語" => Some("alias"),
+        "型" => Some("sort"),
+        "データ" => Some("data"),
+        "関係" => Some("relation"),
+        "事実" => Some("fact"),
+        "規則" => Some("rule"),
+        "検証" => Some("assert"),
+        "宇宙" => Some("universe"),
+        "関数" => Some("defn"),
+        "プロジェクト" => Some("project"),
+        "モジュール" => Some("module"),
+        "参照" => Some("reference"),
+        "契約" => Some("contract"),
+        "品質ゲート" => Some("quality-gate"),
+        _ => None,
+    }
+}
+
+fn deprecated_surface_tag(tag: &str) -> Option<&'static str> {
+    match tag {
+        ":別名" => Some(":alias"),
+        ":正規" => Some(":canonical"),
+        ":コンストラクタ" => Some(":constructors"),
+        ":引数" => Some(":args / :params"),
+        ":項" => Some(":terms"),
+        ":頭" => Some(":head"),
+        ":本体" => Some(":body"),
+        ":式" => Some(":formula"),
+        ":値" => Some(":values"),
+        ":戻り" => Some(":ret"),
+        ":名前" => Some(":name"),
+        ":概要" => Some(":summary"),
+        ":パス" => Some(":path"),
+        ":カテゴリ" => Some(":category"),
+        ":元" => Some(":from"),
+        ":先" => Some(":to"),
+        ":出典" => Some(":source"),
+        ":コマンド" => Some(":command"),
+        ":必須" => Some(":required"),
+        _ => None,
+    }
+}
+
+fn deprecated_surface_head_diag(
+    src: &str,
+    form: &SExpr,
+    head: &str,
+    replacement: &str,
+) -> Diagnostic {
+    let (start, end) = form.span_bounds();
+    Diagnostic::new(
+        "E-PARSE",
+        format!("日本語予約語 `{head}` は廃止されました。`{replacement}` を使ってください。"),
+        Some(make_span(src, start, end)),
+    )
+}
+
+fn deprecated_surface_tag_diag(
+    src: &str,
+    node: &SExpr,
+    tag: &str,
+    replacement: &str,
+) -> Diagnostic {
+    let (start, end) = node.span_bounds();
+    Diagnostic::new(
+        "E-PARSE",
+        format!("日本語タグ `{tag}` は廃止されました。`{replacement}` を使ってください。"),
+        Some(make_span(src, start, end)),
+    )
 }
 
 fn attach_source_to_program_spans(program: &mut Program, source: &str) {
@@ -749,6 +795,9 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
     }
 
     let head = atom_required(src, &list[0], "surface top-level head")?;
+    if let Some(replacement) = deprecated_surface_head(&head) {
+        return Err(deprecated_surface_head_diag(src, form, &head, replacement));
+    }
     let Some(kind) = canonical_surface_head(&head) else {
         return Err(Diagnostic::new(
             "E-PARSE",
@@ -782,14 +831,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "alias expects tags :別名/:正規",
+                    "alias expects tags :alias/:canonical",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "alias expects tags :別名/:正規",
+                    "alias expects tags :alias/:canonical",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -798,15 +847,15 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":別名", ":alias"],
-                "alias requires :別名",
+                &[":alias"],
+                "alias requires :alias",
             )?;
             let canonical = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":正規", ":canonical"],
-                "alias requires :正規",
+                &[":canonical"],
+                "alias requires :canonical",
             )?;
             Ok(format!(
                 "(alias {} {})",
@@ -818,14 +867,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "data expects tagged constructors: :コンストラクタ",
+                    "data expects tagged constructors: :constructors",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "data expects tagged constructors: :コンストラクタ",
+                    "data expects tagged constructors: :constructors",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -835,8 +884,8 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":コンストラクタ", ":constructors", ":ctors"],
-                "data requires :コンストラクタ",
+                &[":constructors"],
+                "data requires :constructors",
             )?;
             let ctor_items = as_list_items(src, ctors, "constructor list")?;
             let rendered = ctor_items
@@ -850,14 +899,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "relation expects tagged args: :引数",
+                    "relation expects tagged args: :args",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "relation expects tagged args: :引数",
+                    "relation expects tagged args: :args",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -867,8 +916,8 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":引数", ":args"],
-                "relation requires :引数",
+                &[":args"],
+                "relation requires :args",
             )?;
             Ok(format!("(relation {name} {})", sexpr_to_string(args)))
         }
@@ -876,21 +925,21 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "fact expects tagged terms: :項",
+                    "fact expects tagged terms: :terms",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "fact expects tagged terms: :項",
+                    "fact expects tagged terms: :terms",
                     Some(make_span(src, start, end)),
                 ));
             }
             let name = atom_required(src, &list[1], "fact name")?;
             let tags = parse_tag_pairs(src, list, 2)?;
             let terms =
-                required_tag_value(src, form, &tags, &[":項", ":terms"], "fact requires :項")?;
+                required_tag_value(src, form, &tags, &[":terms"], "fact requires :terms")?;
             let term_items = as_list_items(src, terms, "fact term list")?;
             let rendered = term_items
                 .iter()
@@ -902,9 +951,9 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
         "rule" => {
             let tags = parse_tag_pairs(src, list, 1)?;
             let head =
-                required_tag_value(src, form, &tags, &[":頭", ":head"], "rule requires :頭")?;
+                required_tag_value(src, form, &tags, &[":head"], "rule requires :head")?;
             let body =
-                required_tag_value(src, form, &tags, &[":本体", ":body"], "rule requires :本体")?;
+                required_tag_value(src, form, &tags, &[":body"], "rule requires :body")?;
             Ok(format!(
                 "(rule {} {})",
                 sexpr_to_string(head),
@@ -915,14 +964,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 4 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "assert expects name and tags :引数/:式",
+                    "assert expects name and tags :params/:formula",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "assert expects name and tags :引数/:式",
+                    "assert expects name and tags :params/:formula",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -932,15 +981,15 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":引数", ":params"],
-                "assert requires :引数",
+                &[":params"],
+                "assert requires :params",
             )?;
             let formula = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":式", ":formula"],
-                "assert requires :式",
+                &[":formula"],
+                "assert requires :formula",
             )?;
             Ok(format!(
                 "(assert {name} {} {})",
@@ -952,14 +1001,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 4 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "universe expects type and tag :値",
+                    "universe expects type and tag :values",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "universe expects type and tag :値",
+                    "universe expects type and tag :values",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -969,8 +1018,8 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":値", ":values"],
-                "universe requires :値",
+                &[":values"],
+                "universe requires :values",
             )?;
             Ok(format!("(universe {ty_name} {})", sexpr_to_string(values)))
         }
@@ -978,14 +1027,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 5 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "defn expects name and tags :引数/:戻り/:本体",
+                    "defn expects name and tags :params/:ret/:body",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[2]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "defn expects name and tags :引数/:戻り/:本体",
+                    "defn expects name and tags :params/:ret/:body",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -995,13 +1044,13 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":引数", ":params"],
-                "defn requires :引数",
+                &[":params"],
+                "defn requires :params",
             )?;
             let ret =
-                required_tag_value(src, form, &tags, &[":戻り", ":ret"], "defn requires :戻り")?;
+                required_tag_value(src, form, &tags, &[":ret"], "defn requires :ret")?;
             let body =
-                required_tag_value(src, form, &tags, &[":本体", ":body"], "defn requires :本体")?;
+                required_tag_value(src, form, &tags, &[":body"], "defn requires :body")?;
             Ok(format!(
                 "(defn {name} {} {} {})",
                 sexpr_to_string(params),
@@ -1013,14 +1062,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "project expects tags :名前/:概要",
+                    "project expects tags :name/:summary",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "project expects tags :名前/:概要",
+                    "project expects tags :name/:summary",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -1029,15 +1078,15 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":名前", ":name"],
-                "project requires :名前",
+                &[":name"],
+                "project requires :name",
             )?;
             let summary = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":概要", ":summary"],
-                "project requires :概要",
+                &[":summary"],
+                "project requires :summary",
             )?;
             Ok(format!(
                 "(fact sd-project {} {})",
@@ -1049,14 +1098,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 4 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "module expects tags :名前/:パス/:カテゴリ",
+                    "module expects tags :name/:path/:category",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "module expects tags :名前/:パス/:カテゴリ",
+                    "module expects tags :name/:path/:category",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -1065,22 +1114,22 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":名前", ":name"],
-                "module requires :名前",
+                &[":name"],
+                "module requires :name",
             )?;
             let path = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":パス", ":path"],
-                "module requires :パス",
+                &[":path"],
+                "module requires :path",
             )?;
             let category = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":カテゴリ", ":category"],
-                "module requires :カテゴリ",
+                &[":category"],
+                "module requires :category",
             )?;
             Ok(format!(
                 "(fact exists {})\n(fact artifact {} {})\n(fact sd-module {} {} {})",
@@ -1096,14 +1145,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 3 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "reference expects tags :元/:先",
+                    "reference expects tags :from/:to",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "reference expects tags :元/:先",
+                    "reference expects tags :from/:to",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -1112,11 +1161,11 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":元", ":from"],
-                "reference requires :元",
+                &[":from"],
+                "reference requires :from",
             )?;
             let to =
-                required_tag_value(src, form, &tags, &[":先", ":to"], "reference requires :先")?;
+                required_tag_value(src, form, &tags, &[":to"], "reference requires :to")?;
             Ok(format!(
                 "(fact ref {} {})\n(fact sd-reference {} {})",
                 sexpr_to_string(from),
@@ -1129,14 +1178,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 4 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "contract expects tags :名前/:出典/:パス",
+                    "contract expects tags :name/:source/:path",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "contract expects tags :名前/:出典/:パス",
+                    "contract expects tags :name/:source/:path",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -1145,22 +1194,22 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":名前", ":name"],
-                "contract requires :名前",
+                &[":name"],
+                "contract requires :name",
             )?;
             let source = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":出典", ":source"],
-                "contract requires :出典",
+                &[":source"],
+                "contract requires :source",
             )?;
             let path = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":パス", ":path"],
-                "contract requires :パス",
+                &[":path"],
+                "contract requires :path",
             )?;
             Ok(format!(
                 "(fact contract-doc {} {})\n(fact contract-impl {} {})\n(fact sd-contract {} {} {})",
@@ -1177,14 +1226,14 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
             if list.len() < 4 {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "quality-gate expects tags :名前/:コマンド/:出典",
+                    "quality-gate expects tags :name/:command/:source",
                     Some(make_span(src, start, end)),
                 ));
             }
             if !is_tag_atom(&list[1]) {
                 return Err(Diagnostic::new(
                     "E-PARSE",
-                    "quality-gate expects tags :名前/:コマンド/:出典",
+                    "quality-gate expects tags :name/:command/:source",
                     Some(make_span(src, start, end)),
                 ));
             }
@@ -1193,24 +1242,24 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
                 src,
                 form,
                 &tags,
-                &[":名前", ":name"],
-                "quality-gate requires :名前",
+                &[":name"],
+                "quality-gate requires :name",
             )?;
             let command = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":コマンド", ":command"],
-                "quality-gate requires :コマンド",
+                &[":command"],
+                "quality-gate requires :command",
             )?;
             let source = required_tag_value(
                 src,
                 form,
                 &tags,
-                &[":出典", ":source"],
-                "quality-gate requires :出典",
+                &[":source"],
+                "quality-gate requires :source",
             )?;
-            let required = match optional_tag_value(&tags, &[":必須", ":required"]) {
+            let required = match optional_tag_value(&tags, &[":required"]) {
                 Some("true") | Some("yes") => "yes",
                 Some("false") | Some("no") => "no",
                 Some(_) | None => "yes",
@@ -1237,21 +1286,21 @@ fn desugar_surface_toplevel(src: &str, form: &SExpr) -> Result<String, Diagnosti
 
 fn canonical_surface_head(head: &str) -> Option<&'static str> {
     match head {
-        "import" | "インポート" => Some("import"),
-        "alias" | "同義語" => Some("alias"),
-        "sort" | "型" => Some("sort"),
-        "data" | "データ" => Some("data"),
-        "relation" | "関係" => Some("relation"),
-        "fact" | "事実" => Some("fact"),
-        "rule" | "規則" => Some("rule"),
-        "assert" | "検証" => Some("assert"),
-        "universe" | "宇宙" => Some("universe"),
-        "defn" | "関数" => Some("defn"),
-        "project" | "プロジェクト" => Some("project"),
-        "module" | "モジュール" => Some("module"),
-        "reference" | "参照" => Some("reference"),
-        "contract" | "契約" => Some("contract"),
-        "quality-gate" | "品質ゲート" => Some("quality-gate"),
+        "import" => Some("import"),
+        "alias" => Some("alias"),
+        "sort" => Some("sort"),
+        "data" => Some("data"),
+        "relation" => Some("relation"),
+        "fact" => Some("fact"),
+        "rule" => Some("rule"),
+        "assert" => Some("assert"),
+        "universe" => Some("universe"),
+        "defn" => Some("defn"),
+        "project" => Some("project"),
+        "module" => Some("module"),
+        "reference" => Some("reference"),
+        "contract" => Some("contract"),
+        "quality-gate" => Some("quality-gate"),
         _ => None,
     }
 }
@@ -1292,6 +1341,9 @@ fn parse_tag_pairs<'a>(
                 format!("tag key must start with ':': {key}"),
                 Some(make_span(src, s, e)),
             ));
+        }
+        if let Some(replacement) = deprecated_surface_tag(&key) {
+            return Err(deprecated_surface_tag_diag(src, &list[idx], &key, replacement));
         }
         out.push((key, &list[idx + 1]));
         idx += 2;
@@ -1426,6 +1478,10 @@ fn parse_toplevel(src: &str, form: &SExpr) -> Result<TopLevel, Diagnostic> {
             Some(make_span(src, start, end)),
         )
     })?;
+
+    if let Some(replacement) = deprecated_surface_head(head) {
+        return Err(deprecated_surface_head_diag(src, form, head, replacement));
+    }
 
     match head {
         "import" => parse_import(src, list),

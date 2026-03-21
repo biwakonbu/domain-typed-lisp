@@ -71,7 +71,7 @@
       "patterns": [
         {
           "name": "entity.other.attribute-name.tag.dtl",
-          "match": "(?<![^\\s()])(?::コンストラクタ|:constructors|:ctors|:引数|:args|:項|:terms|:頭|:head|:本体|:body|:params|:式|:formula|:値|:values|:戻り|:ret)(?![^\\s()])"
+          "match": "(?<![^\\s()])(?::alias|:canonical|:constructors|:args|:terms|:head|:body|:params|:formula|:values|:ret|:name|:summary|:path|:category|:from|:to|:source|:command|:required)(?![^\\s()])"
         }
       ]
     },
@@ -111,7 +111,7 @@
       "patterns": [
         {
           "name": "keyword.control.dtl",
-          "match": "(?<![^\\s()])(?:import|sort|data|relation|fact|rule|assert|universe|defn|インポート|型|データ|関係|事実|規則|検証|宇宙|関数|and|not|let|if|match)(?![^\\s()])"
+          "match": "(?<![^\\s()])(?:import|sort|data|relation|fact|rule|assert|universe|defn|project|module|reference|contract|quality-gate|and|not|let|if|match)(?![^\\s()])"
         }
       ]
     }

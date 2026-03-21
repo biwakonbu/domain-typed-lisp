@@ -76,16 +76,16 @@
 
 ### 4.1 Core / Surface 二層構文
 - Core: 既存の英語キーワード S 式（後方互換）。
-- Surface: タグ付き可読構文（日本語/英語エイリアス）。
+- Surface: タグ付き可読構文（英語キーワード/英語タグのみ）。
 - 先頭コメント `; syntax: core|surface|auto` で明示できます（省略時 auto 判定）。
 - auto 判定で Core/Surface を同一ファイルに混在させると `E-SYNTAX-AUTO` になります。
 
 Surface 例:
 ```dtl
 ; syntax: surface
-(型 主体)
-(データ 顧客種別 :コンストラクタ ((法人) (個人)))
-(関係 契約締結可能 :引数 (主体 契約 顧客種別))
+(sort 主体)
+(data 顧客種別 :constructors ((法人) (個人)))
+(relation 契約締結可能 :args (主体 契約 顧客種別))
 ```
 
 ### 4.2 識別子は日本語可（Unicode）
@@ -122,7 +122,7 @@ Bool | Int | Symbol | Domain | Adt | Fun | Refine
 - 軸だけ定義したい: `sort` を使う
 - 概念を変換したい: 型を分けて `defn` で変換
 
-constructor 同義語を導入する場合は、top-level `alias`（Surface: `同義語`）で定義します。
+constructor 同義語を導入する場合は、top-level `alias`（Surface: `alias :alias ... :canonical ...`）で定義します。
 
 ## 6. `match` の重要挙動
 - `Bool` と `Adt` については網羅性チェックされます。

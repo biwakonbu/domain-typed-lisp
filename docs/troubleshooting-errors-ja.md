@@ -47,7 +47,7 @@
 
 ### 3.5 `E-SYNTAX-AUTO`
 - 症状: `syntax:auto 判定衝突` で parse が停止する。
-- 原因: 同一ファイル内に Core 形式（例: `(relation p (Subject))`）と Surface 形式（例: `(関係 p :引数 (主体))`）が混在。
+- 原因: 同一ファイル内に Core 形式（例: `(relation p (Subject))`）と Surface 形式（例: `(relation p :args (主体))`）が混在。
 - 対処:
 1. ファイル全体を Core か Surface のどちらかに統一する。
 2. 暫定運用では先頭に `; syntax: core` または `; syntax: surface` を明示する。

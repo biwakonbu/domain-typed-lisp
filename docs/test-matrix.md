@@ -5,12 +5,12 @@
 | P-01 | parser 正常 | `data/assert/universe/match` を含む構成 | parse 成功 | language-spec §3/§4 |
 | P-02 | parser 異常 | `data` constructor なし | `E-PARSE` | language-spec §3.3 |
 | P-03 | parser 異常 | `match` arm 形状不正 | `E-PARSE` | language-spec §4 |
-| P-04 | parser 正常 | surface タグ構文（`型/データ/関係`） | parse 成功 | language-spec §3.11 |
+| P-04 | parser 正常 | surface タグ構文（`sort/data/relation`） | parse 成功 | language-spec §3.11 |
 | P-05 | parser 異常 | surface 主要フォームでタグ欠落 | `E-PARSE` | language-spec §3.11 |
 | P-06 | parser 異常 | `syntax:auto` で Core/Surface 混在 | `E-SYNTAX-AUTO` | language-spec §1/§9 |
 | P-07 | parser 正常 | selfdoc Surface フォーム（`project/module/reference/contract/quality-gate`） | parse 成功（`fact` へデシュガ） | language-spec §3.12 |
 | P-08 | parser 異常 | quoted Atom の未対応エスケープ | `E-PARSE` | language-spec §1.1 |
-| P-09 | parser 正常 | constructor alias（Core `alias` / Surface `同義語`） | parse 成功 | language-spec §3.2 |
+| P-09 | parser 正常 | constructor alias（Core `alias` / Surface `alias`） | parse 成功 | language-spec §3.2 |
 | R-01 | resolve 異常 | constructor 重複 | `E-DATA` | language-spec §3.3 |
 | R-02 | resolve 正常 | 再帰 ADT（`(data List (nil) (cons Symbol List))`） | 成功 | language-spec §3.3 |
 | R-03 | resolve 異常 | 未定義 universe 型 | `E-RESOLVE` | language-spec §3.8 |

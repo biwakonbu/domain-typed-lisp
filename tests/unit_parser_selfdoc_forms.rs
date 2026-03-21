@@ -4,11 +4,11 @@ use dtl::parse_program;
 fn parser_accepts_selfdoc_surface_forms() {
     let src = r#"
     ; syntax: surface
-    (プロジェクト :名前 "domain-typed-lisp" :概要 "自己記述")
-    (モジュール :名前 "README" :パス "README.md" :カテゴリ doc)
-    (参照 :元 "README.md" :先 "docs/language-spec.md")
-    (契約 :名前 "cli::check" :出典 "README.md" :パス "src/main.rs")
-    (品質ゲート :名前 "ci:quality:1" :コマンド "cargo test" :出典 ".github/workflows/ci.yml" :必須 true)
+    (project :name "domain-typed-lisp" :summary "自己記述")
+    (module :name "README" :path "README.md" :category doc)
+    (reference :from "README.md" :to "docs/language-spec.md")
+    (contract :name "cli::check" :source "README.md" :path "src/main.rs")
+    (quality-gate :name "ci:quality:1" :command "cargo test" :source ".github/workflows/ci.yml" :required true)
     "#;
 
     let program = parse_program(src).expect("parse should succeed");
@@ -24,7 +24,7 @@ fn parser_accepts_selfdoc_surface_forms() {
 fn parser_rejects_selfdoc_form_without_required_tags() {
     let src = r#"
     ; syntax: surface
-    (契約 :名前 "cli::check" :出典 "README.md")
+    (contract :name "cli::check" :source "README.md")
     "#;
 
     let errors = parse_program(src).expect_err("parse should fail");
@@ -32,6 +32,6 @@ fn parser_rejects_selfdoc_form_without_required_tags() {
     assert!(
         errors
             .iter()
-            .any(|d| d.message.contains("contract requires :パス"))
+            .any(|d| d.message.contains("contract requires :path"))
     );
 }

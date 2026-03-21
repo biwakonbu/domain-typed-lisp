@@ -1,35 +1,35 @@
 ; syntax: surface
 ; @context: facts
 
-(事実 有効ユーザー :項 (uA))
-(事実 有効ユーザー :項 (uB))
-(事実 商品販売中 :項 (p1))
-(事実 商品販売中 :項 (p2))
-(事実 検収済み :項 (p2))
-(事実 担当種別 :項 (uA (一般)))
-(事実 担当種別 :項 (uB (法人)))
+(fact 有効ユーザー :terms (uA))
+(fact 有効ユーザー :terms (uB))
+(fact 商品販売中 :terms (p1))
+(fact 商品販売中 :terms (p2))
+(fact 検収済み :terms (p2))
+(fact 担当種別 :terms (uA (一般)))
+(fact 担当種別 :terms (uB (法人)))
 
 
 ; @context: policy
 
-(規則 :頭 (注文許可 ?u ?p) :本体 (and (有効ユーザー ?u) (商品販売中 ?p)))
-(規則 :頭 (注文許可 ?u ?p) :本体 (and (担当種別 ?u (法人)) (検収済み ?p)))
+(rule :head (注文許可 ?u ?p) :body (and (有効ユーザー ?u) (商品販売中 ?p)))
+(rule :head (注文許可 ?u ?p) :body (and (担当種別 ?u (法人)) (検収済み ?p)))
 
-(検証 注文矛盾なし :引数 ((u ユーザー) (p 商品)) :式 (not (and (注文許可 u p) (not (注文許可 u p)))))
+(assert 注文矛盾なし :params ((u ユーザー) (p 商品)) :formula (not (and (注文許可 u p) (not (注文許可 u p)))))
 
 
 ; @context: prove
 
-(宇宙 ユーザー :値 (uA uB uC))
-(宇宙 ユーザー列 :値 ((空) (連結 uA (空)) (連結 uB (連結 uA (空))) (連結 uC (空))))
-(宇宙 会員種別 :値 ((一般) (法人)))
-(宇宙 商品 :値 (p1 p2))
+(universe ユーザー :values (uA uB uC))
+(universe ユーザー列 :values ((空) (連結 uA (空)) (連結 uB (連結 uA (空))) (連結 uC (空))))
+(universe 会員種別 :values ((一般) (法人)))
+(universe 商品 :values (p1 p2))
 
-(関数 有効ユーザー存在
-  :引数 ((xs ユーザー列))
-  :戻り Bool
-  :本体 (match xs ((空) false) ((連結 h t) (if (有効ユーザー h) true (有効ユーザー存在 t)))))
-(関数 注文可能判定
-  :引数 ((u ユーザー) (p 商品))
-  :戻り (Refine b Bool (注文許可 u p))
-  :本体 (注文許可 u p))
+(defn 有効ユーザー存在
+  :params ((xs ユーザー列))
+  :ret Bool
+  :body (match xs ((空) false) ((連結 h t) (if (有効ユーザー h) true (有効ユーザー存在 t)))))
+(defn 注文可能判定
+  :params ((u ユーザー) (p 商品))
+  :ret (Refine b Bool (注文許可 u p))
+  :body (注文許可 u p))

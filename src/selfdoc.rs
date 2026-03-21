@@ -1260,24 +1260,24 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
     out.push_str("; syntax: surface\n");
     out.push_str("; @context: selfdoc\n\n");
 
-    out.push_str("(型 Path)\n");
-    out.push_str("(型 Category)\n");
-    out.push_str("(型 Ident)\n");
-    out.push_str("(型 Flag)\n\n");
+    out.push_str("(sort Path)\n");
+    out.push_str("(sort Category)\n");
+    out.push_str("(sort Ident)\n");
+    out.push_str("(sort Flag)\n\n");
 
-    out.push_str("(関係 exists :引数 (Path))\n");
-    out.push_str("(関係 artifact :引数 (Path Category))\n");
-    out.push_str("(関係 ref :引数 (Path Path))\n");
-    out.push_str("(関係 contract-doc :引数 (Ident Path))\n");
-    out.push_str("(関係 contract-impl :引数 (Ident Path))\n");
-    out.push_str("(関係 gate-source :引数 (Ident Path))\n");
-    out.push_str("(関係 gate-required :引数 (Ident Flag))\n\n");
+    out.push_str("(relation exists :args (Path))\n");
+    out.push_str("(relation artifact :args (Path Category))\n");
+    out.push_str("(relation ref :args (Path Path))\n");
+    out.push_str("(relation contract-doc :args (Ident Path))\n");
+    out.push_str("(relation contract-impl :args (Ident Path))\n");
+    out.push_str("(relation gate-source :args (Ident Path))\n");
+    out.push_str("(relation gate-required :args (Ident Flag))\n\n");
 
-    out.push_str("(関係 sd-project :引数 (Ident Symbol))\n");
-    out.push_str("(関係 sd-module :引数 (Ident Path Category))\n");
-    out.push_str("(関係 sd-reference :引数 (Path Path))\n");
-    out.push_str("(関係 sd-contract :引数 (Ident Path Path))\n");
-    out.push_str("(関係 sd-quality-gate :引数 (Ident Symbol Path Flag))\n\n");
+    out.push_str("(relation sd-project :args (Ident Symbol))\n");
+    out.push_str("(relation sd-module :args (Ident Path Category))\n");
+    out.push_str("(relation sd-reference :args (Path Path))\n");
+    out.push_str("(relation sd-contract :args (Ident Path Path))\n");
+    out.push_str("(relation sd-quality-gate :args (Ident Symbol Path Flag))\n\n");
 
     let ref_target_formula = build_ref_target_exists_formula(&data.references);
     let contract_doc_formula = build_contract_doc_exists_formula(&data.contracts);
@@ -1288,39 +1288,39 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
     let contract_consistency_formula = build_contract_fact_consistency_formula(&data.contracts);
     let gate_consistency_formula = build_gate_fact_consistency_formula(&data.quality_gates);
     out.push_str(&format!(
-        "(検証 ref_target_exists :引数 () :式 {ref_target_formula})\n"
+        "(assert ref_target_exists :params () :formula {ref_target_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 contract_doc_exists :引数 () :式 {contract_doc_formula})\n"
+        "(assert contract_doc_exists :params () :formula {contract_doc_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 contract_impl_exists :引数 () :式 {contract_impl_formula})\n"
+        "(assert contract_impl_exists :params () :formula {contract_impl_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 gate_source_exists :引数 () :式 {gate_source_formula})\n"
+        "(assert gate_source_exists :params () :formula {gate_source_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 module_artifact_consistency :引数 () :式 {module_artifact_formula})\n"
+        "(assert module_artifact_consistency :params () :formula {module_artifact_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 reference_fact_consistency :引数 () :式 {reference_consistency_formula})\n"
+        "(assert reference_fact_consistency :params () :formula {reference_consistency_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 contract_fact_consistency :引数 () :式 {contract_consistency_formula})\n"
+        "(assert contract_fact_consistency :params () :formula {contract_consistency_formula})\n"
     ));
     out.push_str(&format!(
-        "(検証 gate_fact_consistency :引数 () :式 {gate_consistency_formula})\n\n"
+        "(assert gate_fact_consistency :params () :formula {gate_consistency_formula})\n\n"
     ));
 
     out.push_str(&format!(
-        "(プロジェクト :名前 {} :概要 {})\n",
+        "(project :name {} :summary {})\n",
         quote_atom(&data.project.name),
         quote_atom(&data.project.summary)
     ));
 
     for module in &data.modules {
         out.push_str(&format!(
-            "(モジュール :名前 {} :パス {} :カテゴリ {})\n",
+            "(module :name {} :path {} :category {})\n",
             quote_atom(&module.name),
             quote_atom(&module.path),
             module.category
@@ -1329,7 +1329,7 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
 
     for reference in &data.references {
         out.push_str(&format!(
-            "(参照 :元 {} :先 {})\n",
+            "(reference :from {} :to {})\n",
             quote_atom(&reference.from),
             quote_atom(&reference.to)
         ));
@@ -1337,7 +1337,7 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
 
     for contract in &data.contracts {
         out.push_str(&format!(
-            "(契約 :名前 {} :出典 {} :パス {})\n",
+            "(contract :name {} :source {} :path {})\n",
             quote_atom(&contract.name),
             quote_atom(&contract.source),
             quote_atom(&contract.path)
@@ -1346,7 +1346,7 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
 
     for gate in &data.quality_gates {
         out.push_str(&format!(
-            "(品質ゲート :名前 {} :コマンド {} :出典 {} :必須 {})\n",
+            "(quality-gate :name {} :command {} :source {} :required {})\n",
             quote_atom(&gate.name),
             quote_atom(&gate.command),
             quote_atom(&gate.source),
@@ -1364,7 +1364,7 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
 
     out.push('\n');
     out.push_str(&format!(
-        "(宇宙 Path :値 ({}))\n",
+        "(universe Path :values ({}))\n",
         path_values
             .iter()
             .map(|v| quote_atom(v))
@@ -1372,7 +1372,7 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
             .join(" ")
     ));
     out.push_str(&format!(
-        "(宇宙 Ident :値 ({}))\n",
+        "(universe Ident :values ({}))\n",
         ident_values
             .iter()
             .map(|v| quote_atom(v))
@@ -1380,10 +1380,10 @@ fn render_selfdoc_program(data: &PreparedData) -> String {
             .join(" ")
     ));
     out.push_str(&format!(
-        "(宇宙 Category :値 ({}))\n",
+        "(universe Category :values ({}))\n",
         category_values.join(" ")
     ));
-    out.push_str("(宇宙 Flag :値 (yes no))\n");
+    out.push_str("(universe Flag :values (yes no))\n");
 
     out
 }

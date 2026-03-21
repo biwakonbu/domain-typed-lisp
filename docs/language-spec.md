@@ -74,7 +74,7 @@
 Surface:
 
 ```dtl
-(同義語 :別名 閲覧 :正規 read)
+(alias :alias 閲覧 :canonical read)
 ```
 
 ### 3.3 sort
@@ -128,26 +128,26 @@ Surface:
 ### 3.11 Surface（タグ付き）例
 ```dtl
 ; syntax: surface
-(型 主体)
-(データ 顧客種別 :コンストラクタ ((法人) (個人)))
-(関係 契約締結可能 :引数 (主体 契約 顧客種別))
-(事実 契約締結可能 :項 (山田 基本契約 (法人)))
-(規則 :頭 (契約締結可能 ?担当 ?契約ID ?種別)
-      :本体 (and (担当顧客種別 ?担当 ?種別)
+(sort 主体)
+(data 顧客種別 :constructors ((法人) (個人)))
+(relation 契約締結可能 :args (主体 契約 顧客種別))
+(fact 契約締結可能 :terms (山田 基本契約 (法人)))
+(rule :head (契約締結可能 ?担当 ?契約ID ?種別)
+      :body (and (担当顧客種別 ?担当 ?種別)
                  (契約登録 ?契約ID)))
 ```
 
 ### 3.12 selfdoc Surface（タグ付き）例
 ```dtl
 ; syntax: surface
-(プロジェクト :名前 "domain-typed-lisp" :概要 "自己記述 DSL")
-(モジュール :名前 "README.md" :パス "README.md" :カテゴリ doc)
-(参照 :元 "README.md" :先 "docs/language-spec.md")
-(契約 :名前 "cli::check" :出典 "README.md" :パス "src/main.rs")
-(品質ゲート :名前 "ci:quality:1" :コマンド "cargo test" :出典 ".github/workflows/ci.yml" :必須 yes)
+(project :name "domain-typed-lisp" :summary "自己記述 DSL")
+(module :name "README.md" :path "README.md" :category doc)
+(reference :from "README.md" :to "docs/language-spec.md")
+(contract :name "cli::check" :source "README.md" :path "src/main.rs")
+(quality-gate :name "ci:quality:1" :command "cargo test" :source ".github/workflows/ci.yml" :required yes)
 ```
 
-- 日英エイリアス: `project/プロジェクト`, `module/モジュール`, `reference/参照`, `contract/契約`, `quality-gate/品質ゲート`
+- Surface 予約語・タグは英語のみ。識別子には日本語を使える。
 - これらは parser フロントで既存 Core `fact` 群へデシュガされる。
 
 ## 4. 式

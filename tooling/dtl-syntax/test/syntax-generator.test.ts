@@ -13,8 +13,10 @@ describe("dtl syntax generator", () => {
     expect(once).toContain("source.dtl");
     expect(once).toContain("keyword.control.dtl");
     expect(once).toContain("entity.other.attribute-name.tag.dtl");
-    expect(once).toContain("インポート");
-    expect(once).toContain(":引数");
+    expect(once).toContain("quality-gate");
+    expect(once).toContain(":constructors");
+    expect(once).not.toContain("インポート");
+    expect(once).not.toContain(":引数");
   });
 
   it("generates highlight.js runtime with dtl+lisp+terminal compatibility", () => {

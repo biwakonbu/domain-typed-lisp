@@ -18,8 +18,9 @@
 - `selfdoc`: リポジトリを自動抽出し、自己記述 DSL (`selfdoc.generated.dtl`) を生成して `doc` 束を出力
 - 識別子は Unicode 対応（通常 Atom は NFC 正規化。quoted Atom は空白対応 + エスケープ解釈）
 - `syntax: auto` は Core/Surface 混在を検知すると `E-SYNTAX-AUTO` を返す
+- Surface 構文の予約語・タグは英語のみ（日本語識別子は可）
 - 意味固定は `data` constructor の正規名で行い、概念差分は型分離 + `defn` 変換で表現
-- constructor 同義語は top-level `alias` / Surface `同義語` で定義できる
+- constructor 同義語は top-level `alias` / Surface `alias` で定義できる
 
 ## クイックスタート
 ```bash

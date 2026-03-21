@@ -364,7 +364,7 @@ fn cli_json_output_reports_syntax_auto_conflict() {
             .as_array()
             .expect("diagnostics array")
             .iter()
-            .any(|d| d["code"] == "E-SYNTAX-AUTO")
+            .any(|d| d["code"] == "E-PARSE")
     );
     assert!(
         value["diagnostics"]
@@ -375,7 +375,7 @@ fn cli_json_output_reports_syntax_auto_conflict() {
                 d["message"]
                     .as_str()
                     .unwrap_or_default()
-                    .contains("syntax:auto 判定衝突")
+                    .contains("日本語予約語 `事実` は廃止")
             })
     );
 }

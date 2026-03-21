@@ -205,16 +205,16 @@ fn render_with_context_blocks(program: Program, src: &str, out: &mut String) {
 
 fn canonical_top_level_kind(head: &str) -> Option<TopLevelKind> {
     match head {
-        "import" | "インポート" => Some(TopLevelKind::Import),
-        "alias" | "同義語" => Some(TopLevelKind::Alias),
-        "sort" | "型" => Some(TopLevelKind::Sort),
-        "data" | "データ" => Some(TopLevelKind::Data),
-        "relation" | "関係" => Some(TopLevelKind::Relation),
-        "fact" | "事実" => Some(TopLevelKind::Fact),
-        "rule" | "規則" => Some(TopLevelKind::Rule),
-        "assert" | "検証" => Some(TopLevelKind::Assert),
-        "universe" | "宇宙" => Some(TopLevelKind::Universe),
-        "defn" | "関数" => Some(TopLevelKind::Defn),
+        "import" => Some(TopLevelKind::Import),
+        "alias" => Some(TopLevelKind::Alias),
+        "sort" => Some(TopLevelKind::Sort),
+        "data" => Some(TopLevelKind::Data),
+        "relation" => Some(TopLevelKind::Relation),
+        "fact" => Some(TopLevelKind::Fact),
+        "rule" => Some(TopLevelKind::Rule),
+        "assert" => Some(TopLevelKind::Assert),
+        "universe" => Some(TopLevelKind::Universe),
+        "defn" => Some(TopLevelKind::Defn),
         _ => None,
     }
 }
@@ -223,7 +223,7 @@ fn contains_selfdoc_form(src: &str) -> bool {
     static SELF_DOC_FORM_RE: OnceLock<regex::Regex> = OnceLock::new();
     let pattern = SELF_DOC_FORM_RE.get_or_init(|| {
         regex::Regex::new(
-            r"\(\s*(?:project|module|reference|contract|quality-gate|プロジェクト|モジュール|参照|契約|品質ゲート)\s*:",
+            r"\(\s*(?:project|module|reference|contract|quality-gate)\s*:",
         )
         .expect("valid selfdoc regex")
     });
@@ -506,24 +506,21 @@ fn assign_defns(
 
 fn render_forms(forms: &ContextForms, out: &mut String) {
     for import in &forms.imports {
-        out.push_str(&format!("(インポート \"{}\")\n", import.path));
+        out.push_str(&format!("(import \"{}\")\n", import.path));
     }
     if !forms.imports.is_empty() {
         out.push('\n');
     }
 
     for alias in &forms.aliases {
-        out.push_str(&format!(
-            "(同義語 :別名 {} :正規 {})\n",
-            alias.alias, alias.canonical
-        ));
+        out.push_str(&format!("(alias :alias {} :canonical {})\n", alias.alias, alias.canonical));
     }
     if !forms.aliases.is_empty() {
         out.push('\n');
     }
 
     for sort in &forms.sorts {
-        out.push_str(&format!("(型 {})\n", sort.name));
+        out.push_str(&format!("(sort {})\n", sort.name));
     }
     if !forms.sorts.is_empty() {
         out.push('\n');
@@ -549,7 +546,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
             .collect::<Vec<_>>()
             .join(" ");
         out.push_str(&format!(
-            "(データ {} :コンストラクタ ({}))\n",
+            "(data {} :constructors ({}))\n",
             data.name, ctors
         ));
     }
@@ -559,7 +556,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
 
     for relation in &forms.relations {
         out.push_str(&format!(
-            "(関係 {} :引数 ({}))\n",
+            "(relation {} :args ({}))\n",
             relation.name,
             relation.arg_sorts.join(" ")
         ));
@@ -575,7 +572,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
             .map(render_logic_term)
             .collect::<Vec<_>>()
             .join(" ");
-        out.push_str(&format!("(事実 {} :項 ({}))\n", fact.name, terms));
+        out.push_str(&format!("(fact {} :terms ({}))\n", fact.name, terms));
     }
     if !forms.facts.is_empty() {
         out.push('\n');
@@ -583,7 +580,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
 
     for rule in &forms.rules {
         out.push_str(&format!(
-            "(規則 :頭 {} :本体 {})\n",
+            "(rule :head {} :body {})\n",
             render_atom_rule(&rule.head),
             render_formula_rule(&rule.body)
         ));
@@ -600,7 +597,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
             .collect::<Vec<_>>()
             .join(" ");
         out.push_str(&format!(
-            "(検証 {} :引数 ({}) :式 {})\n",
+            "(assert {} :params ({}) :formula {})\n",
             assertion.name,
             params,
             render_formula_refine(&assertion.formula)
@@ -617,7 +614,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
             .map(render_logic_term)
             .collect::<Vec<_>>()
             .join(" ");
-        out.push_str(&format!("(宇宙 {} :値 ({}))\n", universe.ty_name, values));
+        out.push_str(&format!("(universe {} :values ({}))\n", universe.ty_name, values));
     }
     if !forms.universes.is_empty() {
         out.push('\n');
@@ -631,7 +628,7 @@ fn render_forms(forms: &ContextForms, out: &mut String) {
             .collect::<Vec<_>>()
             .join(" ");
         out.push_str(&format!(
-            "(関数 {}\n  :引数 ({})\n  :戻り {}\n  :本体 {})\n",
+            "(defn {}\n  :params ({})\n  :ret {}\n  :body {})\n",
             defn.name,
             params,
             render_type(&defn.ret_type),
@@ -895,15 +892,7 @@ mod tests {
             Some(TopLevelKind::Import)
         ));
         assert!(matches!(
-            canonical_top_level_kind("インポート"),
-            Some(TopLevelKind::Import)
-        ));
-        assert!(matches!(
             canonical_top_level_kind("alias"),
-            Some(TopLevelKind::Alias)
-        ));
-        assert!(matches!(
-            canonical_top_level_kind("同義語"),
             Some(TopLevelKind::Alias)
         ));
         assert!(matches!(
@@ -911,15 +900,7 @@ mod tests {
             Some(TopLevelKind::Sort)
         ));
         assert!(matches!(
-            canonical_top_level_kind("型"),
-            Some(TopLevelKind::Sort)
-        ));
-        assert!(matches!(
             canonical_top_level_kind("data"),
-            Some(TopLevelKind::Data)
-        ));
-        assert!(matches!(
-            canonical_top_level_kind("データ"),
             Some(TopLevelKind::Data)
         ));
         assert!(matches!(
@@ -927,15 +908,7 @@ mod tests {
             Some(TopLevelKind::Relation)
         ));
         assert!(matches!(
-            canonical_top_level_kind("関係"),
-            Some(TopLevelKind::Relation)
-        ));
-        assert!(matches!(
             canonical_top_level_kind("fact"),
-            Some(TopLevelKind::Fact)
-        ));
-        assert!(matches!(
-            canonical_top_level_kind("事実"),
             Some(TopLevelKind::Fact)
         ));
         assert!(matches!(
@@ -943,15 +916,7 @@ mod tests {
             Some(TopLevelKind::Rule)
         ));
         assert!(matches!(
-            canonical_top_level_kind("規則"),
-            Some(TopLevelKind::Rule)
-        ));
-        assert!(matches!(
             canonical_top_level_kind("assert"),
-            Some(TopLevelKind::Assert)
-        ));
-        assert!(matches!(
-            canonical_top_level_kind("検証"),
             Some(TopLevelKind::Assert)
         ));
         assert!(matches!(
@@ -959,15 +924,7 @@ mod tests {
             Some(TopLevelKind::Universe)
         ));
         assert!(matches!(
-            canonical_top_level_kind("宇宙"),
-            Some(TopLevelKind::Universe)
-        ));
-        assert!(matches!(
             canonical_top_level_kind("defn"),
-            Some(TopLevelKind::Defn)
-        ));
-        assert!(matches!(
-            canonical_top_level_kind("関数"),
             Some(TopLevelKind::Defn)
         ));
         assert!(canonical_top_level_kind("unknown").is_none());
@@ -1370,16 +1327,16 @@ mod tests {
 
         let mut rendered = String::new();
         render_forms(&forms, &mut rendered);
-        assert!(rendered.contains("(インポート \"zeta.dtl\")"));
-        assert!(rendered.contains("(同義語 :別名 閲覧 :正規 read)"));
-        assert!(rendered.contains("(型 Subject)"));
-        assert!(rendered.contains("(データ Node :コンストラクタ ((leaf) (cons Int)))"));
-        assert!(rendered.contains("(関係 allowed :引数 (Subject))"));
-        assert!(rendered.contains("(事実 allowed :項 (alice))"));
-        assert!(rendered.contains("(規則 :頭 (allowed ?x) :本体 (allowed ?x))"));
-        assert!(rendered.contains("(検証 ok :引数 ((u Subject)) :式 (allowed u))"));
-        assert!(rendered.contains("(宇宙 Subject :値 (alice))"));
-        assert!(rendered.contains("(関数 id"));
+        assert!(rendered.contains("(import \"zeta.dtl\")"));
+        assert!(rendered.contains("(alias :alias 閲覧 :canonical read)"));
+        assert!(rendered.contains("(sort Subject)"));
+        assert!(rendered.contains("(data Node :constructors ((leaf) (cons Int)))"));
+        assert!(rendered.contains("(relation allowed :args (Subject))"));
+        assert!(rendered.contains("(fact allowed :terms (alice))"));
+        assert!(rendered.contains("(rule :head (allowed ?x) :body (allowed ?x))"));
+        assert!(rendered.contains("(assert ok :params ((u Subject)) :formula (allowed u))"));
+        assert!(rendered.contains("(universe Subject :values (alice))"));
+        assert!(rendered.contains("(defn id"));
 
         let program = Program {
             imports: forms.imports.clone(),
@@ -1427,8 +1384,8 @@ mod tests {
         )
         .expect("format");
 
-        let sort_pos = rendered.find("(型 Subject)").expect("sort");
-        let relation_pos = rendered.find("(関係 z :引数 (Subject))").expect("relation");
+        let sort_pos = rendered.find("(sort Subject)").expect("sort");
+        let relation_pos = rendered.find("(relation z :args (Subject))").expect("relation");
         assert!(sort_pos < relation_pos);
 
         let err = format_source("(", FormatOptions::default()).expect_err("parse error");

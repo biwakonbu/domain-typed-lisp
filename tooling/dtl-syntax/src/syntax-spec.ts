@@ -19,39 +19,31 @@ export const DTL_SYNTAX_SPEC: DtlSyntaxSpec = {
     "universe",
     "defn"
   ],
-  surfaceTopLevelKeywords: [
-    "インポート",
-    "型",
-    "データ",
-    "関係",
-    "事実",
-    "規則",
-    "検証",
-    "宇宙",
-    "関数"
-  ],
+  surfaceTopLevelKeywords: ["project", "module", "reference", "contract", "quality-gate"],
   specialFormKeywords: ["and", "not", "let", "if", "match"],
   typeKeywords: ["Bool", "Int", "Symbol", "Refine", "Adt"],
   booleanLiterals: ["true", "false"],
   surfaceTags: [
-    ":コンストラクタ",
+    ":alias",
+    ":canonical",
     ":constructors",
-    ":ctors",
-    ":引数",
     ":args",
-    ":項",
     ":terms",
-    ":頭",
     ":head",
-    ":本体",
     ":body",
     ":params",
-    ":式",
     ":formula",
-    ":値",
     ":values",
-    ":戻り",
-    ":ret"
+    ":ret",
+    ":name",
+    ":summary",
+    ":path",
+    ":category",
+    ":from",
+    ":to",
+    ":source",
+    ":command",
+    ":required"
   ]
 };
 
